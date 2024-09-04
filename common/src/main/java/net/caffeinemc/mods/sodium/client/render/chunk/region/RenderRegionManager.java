@@ -28,7 +28,7 @@ import java.util.Iterator;
 import java.util.List;
 
 public class RenderRegionManager {
-    public final Long2ReferenceOpenHashMap<RenderRegion> regions = new Long2ReferenceOpenHashMap<>();
+    private final Long2ReferenceOpenHashMap<RenderRegion> regions = new Long2ReferenceOpenHashMap<>();
 
     private final StagingBuffer stagingBuffer;
 
