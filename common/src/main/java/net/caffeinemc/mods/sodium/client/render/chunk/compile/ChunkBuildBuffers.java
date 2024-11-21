@@ -1,7 +1,7 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.compile;
 
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
-import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
+import net.caffeinemc.mods.sodium.client.model.quad.properties.MeshQuadCategory;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.buffers.BakedChunkModelBuilder;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.buffers.ChunkModelBuilder;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionInfo;
@@ -31,9 +31,9 @@ public class ChunkBuildBuffers {
         this.vertexType = vertexType;
 
         for (TerrainRenderPass pass : DefaultTerrainRenderPasses.ALL) {
-            var vertexBuffers = new ChunkMeshBufferBuilder[ModelQuadFacing.COUNT];
+            var vertexBuffers = new ChunkMeshBufferBuilder[MeshQuadCategory.COUNT];
 
-            for (int facing = 0; facing < ModelQuadFacing.COUNT; facing++) {
+            for (int facing = 0; facing < MeshQuadCategory.COUNT; facing++) {
                 vertexBuffers[facing] = new ChunkMeshBufferBuilder(this.vertexType, 128 * 1024);
             }
 
@@ -44,6 +44,12 @@ public class ChunkBuildBuffers {
     public void init(BuiltSectionInfo.Builder renderData, int sectionIndex) {
         for (var builder : this.builders.values()) {
             builder.begin(renderData, sectionIndex);
+        }
+    }
+
+    public void activateLocalCategory() {
+        for (var builder : this.builders.values()) {
+            builder.activateLocalCategory();
         }
     }
 
@@ -64,13 +70,13 @@ public class ChunkBuildBuffers {
         var builder = this.builders.get(pass);
 
         List<ByteBuffer> vertexBuffers = new ArrayList<>();
-        int[] vertexCounts = new int[ModelQuadFacing.COUNT];
+        int[] vertexCounts = new int[MeshQuadCategory.COUNT];
 
         int vertexSum = 0;
 
-        for (ModelQuadFacing facing : ModelQuadFacing.VALUES) {
-            var ordinal = facing.ordinal();
-            var buffer = builder.getVertexBuffer(facing);
+        for (MeshQuadCategory category : MeshQuadCategory.VALUES) {
+            var ordinal = category.ordinal();
+            var buffer = builder.getVertexBufferByCategory(category);
 
             if (buffer.isEmpty()) {
                 continue;
@@ -90,7 +96,7 @@ public class ChunkBuildBuffers {
         }
 
         if (forceUnassigned) {
-            vertexCounts[ModelQuadFacing.UNASSIGNED.ordinal()] = vertexSum;
+            vertexCounts[MeshQuadCategory.UNASSIGNED.ordinal()] = vertexSum;
         }
 
         var mergedBuffer = new NativeBuffer(vertexSum * this.vertexType.getVertexFormat().getStride());

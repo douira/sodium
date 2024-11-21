@@ -1,6 +1,7 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.compile.buffers;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.caffeinemc.mods.sodium.client.model.quad.properties.MeshQuadCategory;
 import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionInfo;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.material.Material;
@@ -10,6 +11,7 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 
 public class BakedChunkModelBuilder implements ChunkModelBuilder {
     private final ChunkMeshBufferBuilder[] vertexBuffers;
+    private ChunkMeshBufferBuilder localCategoryBuilder;
     private final ChunkVertexConsumer fallbackVertexConsumer = new ChunkVertexConsumer(this);
 
     private BuiltSectionInfo.Builder renderData;
@@ -20,12 +22,23 @@ public class BakedChunkModelBuilder implements ChunkModelBuilder {
 
     @Override
     public ChunkMeshBufferBuilder getVertexBuffer(ModelQuadFacing facing) {
+        if (this.localCategoryBuilder != null) {
+            return this.localCategoryBuilder;
+        }
         return this.vertexBuffers[facing.ordinal()];
+    }
+
+    public ChunkMeshBufferBuilder getVertexBufferByCategory(MeshQuadCategory category) {
+        return this.vertexBuffers[category.ordinal()];
     }
 
     @Override
     public void addSprite(TextureAtlasSprite sprite) {
         this.renderData.addSprite(sprite);
+    }
+
+    public void activateLocalCategory() {
+        this.localCategoryBuilder = this.vertexBuffers[MeshQuadCategory.LOCAL.ordinal()];
     }
 
     @Override
@@ -46,5 +59,7 @@ public class BakedChunkModelBuilder implements ChunkModelBuilder {
         for (var vertexBuffer : this.vertexBuffers) {
             vertexBuffer.start(sectionIndex);
         }
+
+        this.localCategoryBuilder = null;
     }
 }

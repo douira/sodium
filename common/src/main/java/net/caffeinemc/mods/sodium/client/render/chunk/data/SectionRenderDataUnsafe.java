@@ -16,10 +16,10 @@ import org.lwjgl.system.MemoryUtil;
 // Please never try to write performance critical code in Java. This is what it will do to you. And you will still be
 // three times slower than the most naive solution in literally any other language that LLVM can compile.
 
-// struct SectionRenderData { // 64 bytes
+// struct SectionRenderData { // 72 bytes
 //   base_element: u32
 //   mask: u32,
-//   ranges: [VertexRange; 7]
+//   ranges: [VertexRange; 8]
 // }
 //
 // struct VertexRange { // 8 bytes
@@ -39,13 +39,14 @@ public class SectionRenderDataUnsafe {
     private static final long OFFSET_SLICE_MASK = 4;
     private static final long OFFSET_SLICE_RANGES = 8;
 
-    private static final long ALIGNMENT = 64;
-    private static final long STRIDE = 64; // cache-line friendly! :)
+    private static final long ALIGNMENT = 64; // TODO: is alignment required?
+    private static final long STRIDE = 72;
 
     public static long allocateHeap(int count) {
         final var bytes = STRIDE * count;
 
-        final var ptr = MemoryUtil.nmemAlignedAlloc(ALIGNMENT, bytes);
+        // final var ptr = MemoryUtil.nmemAlignedAlloc(ALIGNMENT, bytes);
+        final var ptr = MemoryUtil.nmemAlloc(bytes);
         MemoryUtil.memSet(ptr, 0, bytes);
 
         return ptr;
@@ -83,15 +84,15 @@ public class SectionRenderDataUnsafe {
         MemoryUtil.memPutInt(ptr + OFFSET_SLICE_RANGES + (facing * 8L) + 0L, UInt32.downcast(value));
     }
 
-    public static long /* Uint32 */ getVertexOffset(long ptr, int facing) {
-        return UInt32.upcast(MemoryUtil.memGetInt(ptr + OFFSET_SLICE_RANGES + (facing * 8L) + 0L));
+    public static long /* Uint32 */ getVertexOffset(long ptr, int category) {
+        return UInt32.upcast(MemoryUtil.memGetInt(ptr + OFFSET_SLICE_RANGES + (category * 8L) + 0L));
     }
 
-    public static void setElementCount(long ptr, int facing, long value /* Uint32 */) {
-        MemoryUtil.memPutInt(ptr + OFFSET_SLICE_RANGES + (facing * 8L) + 4L, UInt32.downcast(value));
+    public static void setElementCount(long ptr, int category, long value /* Uint32 */) {
+        MemoryUtil.memPutInt(ptr + OFFSET_SLICE_RANGES + (category * 8L) + 4L, UInt32.downcast(value));
     }
 
-    public static long /* Uint32 */ getElementCount(long ptr, int facing) {
-        return UInt32.upcast(MemoryUtil.memGetInt(ptr + OFFSET_SLICE_RANGES + (facing * 8L) + 4L));
+    public static long /* Uint32 */ getElementCount(long ptr, int category) {
+        return UInt32.upcast(MemoryUtil.memGetInt(ptr + OFFSET_SLICE_RANGES + (category * 8L) + 4L));
     }
 }

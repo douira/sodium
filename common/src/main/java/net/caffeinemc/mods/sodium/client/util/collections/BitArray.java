@@ -262,6 +262,27 @@ public class BitArray {
         }
     }
 
+    public int nextClearBit(int fromIndex) {
+        int u = wordIndex(fromIndex);
+
+        if (u >= this.words.length) {
+            return -1;
+        }
+
+        long word = ~this.words[u] & (WORD_MASK << fromIndex);
+
+        while (true) {
+            if (word != 0) {
+                return (u * BITS_PER_WORD) + Long.numberOfTrailingZeros(word);
+            }
+            if (++u == this.words.length) {
+                return -1;
+            }
+
+            word = ~this.words[u];
+        }
+    }
+
     public String toBitString() {
         StringBuilder sb = new StringBuilder();
 

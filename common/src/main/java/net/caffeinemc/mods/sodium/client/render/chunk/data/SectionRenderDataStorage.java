@@ -1,9 +1,8 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.data;
 
 import net.caffeinemc.mods.sodium.client.gl.arena.GlBufferSegment;
-import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
+import net.caffeinemc.mods.sodium.client.model.quad.properties.MeshQuadCategory;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
-import net.caffeinemc.mods.sodium.client.util.UInt32;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -62,16 +61,14 @@ public class SectionRenderDataStorage {
 
         long vertexOffset = allocation.getOffset();
 
-        for (int facingIndex = 0; facingIndex < ModelQuadFacing.COUNT; facingIndex++) {
-            long vertexCount = vertexCounts[facingIndex];
+        for (int category = 0; category < MeshQuadCategory.COUNT; category++) {
+            long vertexCount = vertexCounts[category];
 
-            SectionRenderDataUnsafe.setVertexOffset(pMeshData, facingIndex,
-                    UInt32.downcast(vertexOffset));
-            SectionRenderDataUnsafe.setElementCount(pMeshData, facingIndex,
-                    UInt32.downcast((vertexCount >> 2) * 6));
+            SectionRenderDataUnsafe.setVertexOffset(pMeshData, category, vertexOffset);
+            SectionRenderDataUnsafe.setElementCount(pMeshData, category, (vertexCount >> 2) * 6);
 
             if (vertexCount > 0) {
-                sliceMask |= 1 << facingIndex;
+                sliceMask |= 1 << category;
             }
 
             vertexOffset += vertexCount;
@@ -163,10 +160,10 @@ public class SectionRenderDataStorage {
         long offset = allocation.getOffset();
         var data = this.getDataPointer(sectionIndex);
 
-        for (int facing = 0; facing < ModelQuadFacing.COUNT; facing++) {
-            SectionRenderDataUnsafe.setVertexOffset(data, facing, offset);
+        for (int category = 0; category < MeshQuadCategory.COUNT; category++) {
+            SectionRenderDataUnsafe.setVertexOffset(data, category, offset);
 
-            var count = SectionRenderDataUnsafe.getElementCount(data, facing);
+            var count = SectionRenderDataUnsafe.getElementCount(data, category);
             offset += (count / 6) * 4; // convert elements back into vertices
         }
     }

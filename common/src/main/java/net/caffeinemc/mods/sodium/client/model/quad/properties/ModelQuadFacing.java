@@ -24,9 +24,6 @@ public enum ModelQuadFacing {
     public static final int COUNT = VALUES.length;
     public static final int DIRECTIONS = VALUES.length - 1;
 
-    public static final int NONE = 0;
-    public static final int ALL = (1 << COUNT) - 1;
-
     public static final Vector3fc[] ALIGNED_NORMALS = new Vector3fc[] {
             new Vector3f(1, 0, 0),
             new Vector3f(0, 1, 0),

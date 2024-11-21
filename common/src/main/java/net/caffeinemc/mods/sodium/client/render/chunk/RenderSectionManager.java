@@ -11,6 +11,7 @@ import it.unimi.dsi.fastutil.objects.ReferenceSets;
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.gl.device.RenderDevice;
+import net.caffeinemc.mods.sodium.client.model.quad.properties.MeshQuadCategory;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.BuilderTaskOutput;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkSortOutput;
@@ -21,6 +22,7 @@ import net.caffeinemc.mods.sodium.client.render.chunk.compile.tasks.ChunkBuilder
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.tasks.ChunkBuilderSortingTask;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.tasks.ChunkBuilderTask;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionInfo;
+import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.ChunkRenderList;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.SortedRenderLists;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.VisibleChunkCollector;
@@ -28,6 +30,7 @@ import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.GraphDirection;
 import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.OcclusionCuller;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegionManager;
+import net.caffeinemc.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.SortBehavior.DeferMode;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.SortBehavior.PriorityMode;
@@ -308,6 +311,62 @@ public class RenderSectionManager {
         }
     }
 
+    private Map<TerrainRenderPass, int[]> vertexTotals = new HashMap<>();
+    private long lastPrintTime = System.nanoTime();
+
+    private void countVertexes(ChunkBuildOutput chunkBuildOutput) {
+        for (var entry : chunkBuildOutput.meshes.entrySet()) {
+            var pass = entry.getKey();
+            var counts = entry.getValue().getVertexCounts();
+
+            this.vertexTotals.putIfAbsent(pass, new int[MeshQuadCategory.COUNT]);
+
+            var totals = this.vertexTotals.get(pass);
+            for (int i = 0; i < MeshQuadCategory.COUNT; i++) {
+                totals[i] += counts[i];
+            }
+        }
+    }
+
+    private static String getPassName(TerrainRenderPass pass) {
+        if (pass == DefaultTerrainRenderPasses.SOLID) {
+            return "SOLID";
+        } else if (pass == DefaultTerrainRenderPasses.CUTOUT) {
+            return "CUTOUT";
+        } else if (pass == DefaultTerrainRenderPasses.TRANSLUCENT) {
+            return "TRANSLUCENT";
+        } else {
+            return "UNKNOWN";
+        }
+    }
+
+    private void printVertexTotals() {
+        var crossPassTotal = new int[MeshQuadCategory.COUNT];
+        for (var entry : this.vertexTotals.entrySet()) {
+            var pass = entry.getKey();
+            var totals = entry.getValue();
+
+            System.out.println("Pass: " + getPassName(pass));
+            var passSum = 0;
+            for (int i = 0; i < MeshQuadCategory.COUNT; i++) {
+                passSum += totals[i];
+                System.out.println("Category " + MeshQuadCategory.VALUES[i] + ": " + totals[i]);
+
+                crossPassTotal[i] += totals[i];
+            }
+            System.out.println("Pass total: " + passSum + ", LOCAL is " + (float)totals[MeshQuadCategory.LOCAL.ordinal()] / passSum * 100 + "%");
+        }
+
+        var completeTotal = 0;
+        System.out.println("Cross-pass total:");
+        for (int i = 0; i < MeshQuadCategory.COUNT; i++) {
+            System.out.println("Category " + MeshQuadCategory.VALUES[i] + ": " + crossPassTotal[i]);
+            completeTotal += crossPassTotal[i];
+        }
+
+        System.out.println("Complete total: " + completeTotal + ", LOCAL is " + (float)crossPassTotal[MeshQuadCategory.LOCAL.ordinal()] / completeTotal * 100 + "%");
+    }
+
     private boolean processChunkBuildResults(ArrayList<BuilderTaskOutput> results) {
         var filtered = filterChunkBuildResults(results);
 
@@ -317,6 +376,8 @@ public class RenderSectionManager {
         for (var result : filtered) {
             TranslucentData oldData = result.render.getTranslucentData();
             if (result instanceof ChunkBuildOutput chunkBuildOutput) {
+                this.countVertexes(chunkBuildOutput);
+
                 this.updateSectionInfo(result.render, chunkBuildOutput.info);
                 touchedSectionInfo = true;
 
@@ -341,6 +402,11 @@ public class RenderSectionManager {
             }
 
             result.render.setLastUploadFrame(result.submitTime);
+        }
+
+        if (System.nanoTime() - this.lastPrintTime > 3_000_000_000L) {
+            this.lastPrintTime = System.nanoTime();
+            this.printVertexTotals();
         }
 
         return touchedSectionInfo;

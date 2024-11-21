@@ -22,6 +22,7 @@ public interface ChunkModelBuilder {
      * stored or cached in any way by the caller.
      *
      * @param material the material that should be used for geometry pushed to the vertex consumer
+     * @param collector the collector for translucent geometry
      * @return the fallback vertex consumer which adds geometry to this model builder
      */
     VertexConsumer asFallbackVertexConsumer(Material material, TranslucentGeometryCollector collector);

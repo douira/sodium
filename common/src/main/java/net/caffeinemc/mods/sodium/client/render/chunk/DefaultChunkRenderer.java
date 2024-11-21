@@ -1,7 +1,6 @@
 package net.caffeinemc.mods.sodium.client.render.chunk;
 
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
-import net.caffeinemc.mods.sodium.client.gl.attribute.GlVertexAttributeBinding;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.gl.device.DrawCommandList;
 import net.caffeinemc.mods.sodium.client.gl.device.MultiDrawBatch;
@@ -10,13 +9,12 @@ import net.caffeinemc.mods.sodium.client.gl.tessellation.GlIndexType;
 import net.caffeinemc.mods.sodium.client.gl.tessellation.GlPrimitiveType;
 import net.caffeinemc.mods.sodium.client.gl.tessellation.GlTessellation;
 import net.caffeinemc.mods.sodium.client.gl.tessellation.TessellationBinding;
-import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
+import net.caffeinemc.mods.sodium.client.model.quad.properties.MeshQuadCategory;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.SectionRenderDataStorage;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.SectionRenderDataUnsafe;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.ChunkRenderList;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.ChunkRenderListIterable;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
-import net.caffeinemc.mods.sodium.client.render.chunk.shader.ChunkShaderBindingPoints;
 import net.caffeinemc.mods.sodium.client.render.chunk.shader.ChunkShaderInterface;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.SortBehavior;
@@ -36,7 +34,7 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
     public DefaultChunkRenderer(RenderDevice device, ChunkVertexType vertexType) {
         super(device, vertexType);
 
-        this.batch = new MultiDrawBatch((ModelQuadFacing.COUNT * RenderRegion.REGION_SIZE) + 1);
+        this.batch = new MultiDrawBatch((MeshQuadCategory.COUNT * RenderRegion.REGION_SIZE) + 1);
         this.sharedIndexBuffer = new SharedQuadIndexBuffer(device.createCommandList(), SharedQuadIndexBuffer.IndexType.INTEGER);
     }
 
@@ -72,7 +70,7 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
                 continue;
             }
 
-            fillCommandBuffer(this.batch, region, storage, renderList, camera, renderPass, useBlockFaceCulling);
+            fillCommandBuffer(this.batch, region, storage, renderList, camera, renderPass, useBlockFaceCulling, useIndexedTessellation);
 
             if (this.batch.isEmpty()) {
                 continue;
@@ -109,7 +107,8 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
                                           ChunkRenderList renderList,
                                           CameraTransform camera,
                                           TerrainRenderPass pass,
-                                          boolean useBlockFaceCulling) {
+                                          boolean useBlockFaceCulling,
+                                          boolean useIndexedTessellation) {
         batch.clear();
 
         var iterator = renderList.sectionsWithGeometryIterator(pass.isTranslucent());
@@ -138,7 +137,7 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
             if (useBlockFaceCulling) {
                 slices = getVisibleFaces(camera.intX, camera.intY, camera.intZ, chunkX, chunkY, chunkZ);
             } else {
-                slices = ModelQuadFacing.ALL;
+                slices = MeshQuadCategory.ALL;
             }
 
             // Mask off any geometry sets which are empty (contain no geometry)
@@ -149,7 +148,7 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
                 continue;
             }
 
-            if (pass.isTranslucent()) {
+            if (useIndexedTessellation) {
                 addIndexedDrawCommands(batch, pMeshData, slices);
             } else {
                 addNonIndexedDrawCommands(batch, pMeshData, slices);
@@ -168,13 +167,16 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
 
         int size = batch.size;
 
-        for (int facing = 0; facing < ModelQuadFacing.COUNT; facing++) {
+        for (int category = 0; category < MeshQuadCategory.COUNT; category++) {
+            final long vertexOffset = SectionRenderDataUnsafe.getVertexOffset(pMeshData, category);
+            final long elementCount = SectionRenderDataUnsafe.getElementCount(pMeshData, category);
+
             // Uint32 -> Int32 cast is always safe and should be optimized away
-            MemoryUtil.memPutInt(pBaseVertex + (size << 2), (int) SectionRenderDataUnsafe.getVertexOffset(pMeshData, facing));
-            MemoryUtil.memPutInt(pElementCount + (size << 2), (int) SectionRenderDataUnsafe.getElementCount(pMeshData, facing));
+            MemoryUtil.memPutInt(pBaseVertex + (size << 2), UInt32.uncheckedDowncast(vertexOffset));
+            MemoryUtil.memPutInt(pElementCount + (size << 2), UInt32.uncheckedDowncast(elementCount));
             MemoryUtil.memPutAddress(pElementPointer + (size << 3), 0 /* using a shared index buffer */);
 
-            size += (mask >> facing) & 1;
+            size += (mask >> category) & 1;
         }
 
         batch.size = size;
@@ -194,9 +196,9 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
 
         long elementOffset = SectionRenderDataUnsafe.getBaseElement(pMeshData);
 
-        for (int facing = 0; facing < ModelQuadFacing.COUNT; facing++) {
-            final long vertexOffset = SectionRenderDataUnsafe.getVertexOffset(pMeshData, facing);
-            final long elementCount = SectionRenderDataUnsafe.getElementCount(pMeshData, facing);
+        for (int category = 0; category < MeshQuadCategory.COUNT; category++) {
+            final long vertexOffset = SectionRenderDataUnsafe.getVertexOffset(pMeshData, category);
+            final long elementCount = SectionRenderDataUnsafe.getElementCount(pMeshData, category);
 
             // Uint32 -> Int32 cast is always safe and should be optimized away
             MemoryUtil.memPutInt(pBaseVertex + (size << 2), UInt32.uncheckedDowncast(vertexOffset));
@@ -208,20 +210,23 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
 
             // adding the number of elements works because the index data has one index per element (which are the indices)
             elementOffset += elementCount;
-            size += (mask >> facing) & 1;
+            size += (mask >> category) & 1;
         }
 
         batch.size = size;
     }
 
-    private static final int MODEL_UNASSIGNED = ModelQuadFacing.UNASSIGNED.ordinal();
-    private static final int MODEL_POS_X      = ModelQuadFacing.POS_X.ordinal();
-    private static final int MODEL_POS_Y      = ModelQuadFacing.POS_Y.ordinal();
-    private static final int MODEL_POS_Z      = ModelQuadFacing.POS_Z.ordinal();
+    private static final int MODEL_LOCAL = MeshQuadCategory.LOCAL.ordinal();
 
-    private static final int MODEL_NEG_X      = ModelQuadFacing.NEG_X.ordinal();
-    private static final int MODEL_NEG_Y      = ModelQuadFacing.NEG_Y.ordinal();
-    private static final int MODEL_NEG_Z      = ModelQuadFacing.NEG_Z.ordinal();
+    private static final int MODEL_UNASSIGNED = MeshQuadCategory.UNASSIGNED.ordinal();
+
+    private static final int MODEL_POS_X      = MeshQuadCategory.POS_X.ordinal();
+    private static final int MODEL_POS_Y      = MeshQuadCategory.POS_Y.ordinal();
+    private static final int MODEL_POS_Z      = MeshQuadCategory.POS_Z.ordinal();
+
+    private static final int MODEL_NEG_X      = MeshQuadCategory.NEG_X.ordinal();
+    private static final int MODEL_NEG_Y      = MeshQuadCategory.NEG_Y.ordinal();
+    private static final int MODEL_NEG_Z      = MeshQuadCategory.NEG_Z.ordinal();
 
     private static int getVisibleFaces(int originX, int originY, int originZ, int chunkX, int chunkY, int chunkZ) {
         // This is carefully written so that we can keep everything branch-less.
@@ -261,6 +266,11 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
         planes |=    BitwiseMath.lessThan(originX, (boundsMaxX + 3)) << MODEL_NEG_X;
         planes |=    BitwiseMath.lessThan(originY, (boundsMaxY + 3)) << MODEL_NEG_Y;
         planes |=    BitwiseMath.lessThan(originZ, (boundsMaxZ + 3)) << MODEL_NEG_Z;
+
+        // render the "local" category if the camera is inside the chunk
+        // since the local category is the last and only active if all other planes are being rendered,
+        // adding 1 will set the local category bit only if all other bits are set
+        planes |= (planes + 1) & (1 << MODEL_LOCAL);
 
         return planes;
     }
