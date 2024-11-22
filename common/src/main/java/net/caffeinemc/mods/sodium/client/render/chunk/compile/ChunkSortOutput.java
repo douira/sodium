@@ -44,4 +44,9 @@ public class ChunkSortOutput extends BuilderTaskOutput {
             this.sorter.destroy();
         }
     }
+
+    @Override
+    protected long calculateResultSize() {
+        return this.indexBuffer == null ? 0 : this.indexBuffer.getLength();
+    }
 }
