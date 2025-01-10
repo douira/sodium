@@ -1,7 +1,7 @@
 package net.caffeinemc.mods.sodium.client.util.sorting;
 
 public class InsertionSort extends AbstractSort {
-    public static void insertionSort(final int[] indices, final int fromIndex, final int toIndex, final float[] keys) {
+    public static void insertionSort(final int[] indices, final int fromIndex, final int toIndex, final int[] keys) {
         int index = fromIndex;
 
         while (++index < toIndex) {

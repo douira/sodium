@@ -37,18 +37,11 @@ package net.caffeinemc.mods.sodium.client.util.sorting;
 public class MergeSort extends AbstractSort {
     private static final int INSERTION_SORT_THRESHOLD = 16;
 
-    public static int[] mergeSort(float[] keys) {
-        var indices = createIndexBuffer(keys.length);
-        mergeSort(indices, keys);
-
-        return indices;
-    }
-
-    private static void mergeSort(final int[] indices, final float[] keys) {
+    static void mergeSort(final int[] indices, final int[] keys) {
         mergeSort(indices, keys, 0, indices.length, null);
     }
 
-    private static void mergeSort(final int[] indices, final float[] keys, final int fromIndex, final int toIndex, int[] supp) {
+    private static void mergeSort(final int[] indices, final int[] keys, final int fromIndex, final int toIndex, int[] supp) {
         int len = toIndex - fromIndex;
 
         // Insertion sort on smallest arrays

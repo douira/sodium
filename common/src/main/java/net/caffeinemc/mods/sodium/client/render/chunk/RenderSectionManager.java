@@ -1,5 +1,6 @@
 package net.caffeinemc.mods.sodium.client.render.chunk;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.systems.RenderSystem;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMaps;
@@ -15,8 +16,8 @@ import net.caffeinemc.mods.sodium.client.render.chunk.compile.BuilderTaskOutput;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkSortOutput;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.executor.ChunkBuilder;
-import net.caffeinemc.mods.sodium.client.render.chunk.compile.executor.ChunkJobResult;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.executor.ChunkJobCollector;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.executor.ChunkJobResult;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.tasks.ChunkBuilderMeshingTask;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.tasks.ChunkBuilderSortingTask;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.tasks.ChunkBuilderTask;
@@ -42,6 +43,7 @@ import net.caffeinemc.mods.sodium.client.render.util.RenderAsserts;
 import net.caffeinemc.mods.sodium.client.render.viewport.CameraTransform;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import net.caffeinemc.mods.sodium.client.util.MathUtil;
+import net.caffeinemc.mods.sodium.client.util.sorting.VertexSorters;
 import net.caffeinemc.mods.sodium.client.world.LevelSlice;
 import net.caffeinemc.mods.sodium.client.world.cloned.ChunkRenderContext;
 import net.caffeinemc.mods.sodium.client.world.cloned.ClonedChunkSectionCache;
@@ -58,7 +60,10 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3dc;
+import org.lwjgl.glfw.GLFW;
 
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
@@ -126,6 +131,19 @@ public class RenderSectionManager {
     public void updateCameraState(Vector3dc cameraPosition, Camera camera) {
         this.cameraBlockPos = camera.getBlockPosition();
         this.cameraPosition = cameraPosition;
+
+        if (InputConstants.isKeyDown(Minecraft.getInstance().getWindow().getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT)) {
+            // write timing data to file
+            var csv = VertexSorters.dumpDataToCSV();
+
+            try {
+                // append to file
+                Files.writeString(Minecraft.getInstance().gameDirectory.toPath().resolve("sodium_timing.csv"), csv, StandardOpenOption.APPEND, StandardOpenOption.CREATE);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            System.out.println("Wrote timing data to file");
+        }
     }
 
     public void update(Camera camera, Viewport viewport, boolean spectator) {

@@ -1,7 +1,7 @@
 package net.caffeinemc.mods.sodium.client.util.sorting;
 
 public class RadixSort extends AbstractSort {
-    public static final int RADIX_SORT_THRESHOLD = 64;
+    public static final int RADIX_SORT_THRESHOLD = 45;
 
     private static final int DIGIT_BITS = 8;
     private static final int RADIX_KEY_BITS = Integer.BYTES * 8;
