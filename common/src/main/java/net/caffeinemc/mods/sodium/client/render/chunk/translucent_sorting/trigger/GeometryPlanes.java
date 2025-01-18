@@ -2,11 +2,12 @@ package net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.trigg
 
 import java.util.Collection;
 
+import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
 import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenHashMap;
 import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
-import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.TQuad;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.quad.TQuad;
 import net.minecraft.core.SectionPos;
 
 /**
@@ -74,7 +75,7 @@ public class GeometryPlanes {
         normalPlanes.addPlaneMember(distance);
     }
 
-    public void addDoubleSidedPlane(SectionPos sectionPos, int axis, float distance) {
+    public void addDoubleSidedAlignedPlane(SectionPos sectionPos, int axis, float distance) {
         this.addAlignedPlane(sectionPos, axis, distance);
         this.addAlignedPlane(sectionPos, axis + 3, -distance);
     }
@@ -87,6 +88,11 @@ public class GeometryPlanes {
             unalignedDistances.put(normal, normalPlanes);
         }
         normalPlanes.addPlaneMember(distance);
+    }
+
+    public void addDoubleSidedUnalignedPlane(SectionPos sectionPos, Vector3fc normal, float distance) {
+        this.addUnalignedPlane(sectionPos, normal, distance);
+        this.addUnalignedPlane(sectionPos, normal.negate(new Vector3f()), -distance);
     }
 
     public void addQuadPlane(SectionPos sectionPos, TQuad quad) {
