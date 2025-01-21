@@ -6,10 +6,13 @@ import it.unimi.dsi.fastutil.ints.IntConsumer;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
+import net.caffeinemc.mods.sodium.api.util.ColorMixer;
 import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
-import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.TQuad;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.quad.TQuad;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.TranslucentGeometryCollector;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.TopoGraphSorting;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.quad.FullTQuad;
+import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
 import net.caffeinemc.mods.sodium.client.util.MathUtil;
 import net.caffeinemc.mods.sodium.client.util.sorting.RadixSort;
 import net.minecraft.util.Mth;
@@ -52,6 +55,7 @@ import java.util.Random;
 abstract class InnerPartitionBSPNode extends BSPNode {
     private static final int NODE_REUSE_THRESHOLD = 30;
     private static final int MAX_INTERSECTION_ATTEMPTS = 500;
+    protected static final int UNALIGNED_AXIS = -1;
 
     final Vector3fc planeNormal;
     final int axis;
@@ -80,6 +84,12 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         this.reuseData = reuseData;
     }
 
+    InnerPartitionBSPNode(NodeReuseData reuseData, Vector3fc planeNormal) {
+        this.planeNormal = planeNormal;
+        this.axis = UNALIGNED_AXIS;
+        this.reuseData = reuseData;
+    }
+
     abstract void addPartitionPlanes(BSPWorkspace workspace);
 
     static NodeReuseData prepareNodeReuse(BSPWorkspace workspace, IntArrayList indexes, int depth) {
@@ -91,7 +101,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             int maxIndex = -1;
             for (int i = 0; i < indexes.size(); i++) {
                 var index = indexes.getInt(i);
-                var quad = workspace.quads[index];
+                var quad = workspace.get(index);
                 var extents = quad.getExtents();
                 quadExtents[i] = extents;
                 maxIndex = Math.max(maxIndex, index);
@@ -158,7 +168,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         }
 
         for (int i = 0; i < newIndexes.size(); i++) {
-            if (!workspace.quads[newIndexes.getInt(i)].extentsEqual(oldExtents[i])) {
+            if (!workspace.get(newIndexes.getInt(i)).extentsEqual(oldExtents[i])) {
                 return null;
             }
         }
@@ -236,6 +246,14 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         ReferenceArrayList<Partition> partitions = new ReferenceArrayList<>();
         LongArrayList points = new LongArrayList((int) (indexes.size() * 1.5));
 
+        // keep track of global best splitting group for splitting quads if enabled
+        IntArrayList biggestSplittingGroup = null;
+        IntArrayList splittingGroup = null;
+        if (TranslucentGeometryCollector.SPLIT_QUADS) {
+            biggestSplittingGroup = new IntArrayList(5);
+            splittingGroup = new IntArrayList(5);
+        }
+
         // find any aligned partition, search each axis
         for (int axisCount = 0; axisCount < 3; axisCount++) {
             int axis = (axisCount + depth + 1) % 3;
@@ -246,7 +264,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             // collect all the geometry's start and end points in this direction
             points.clear();
             for (int quadIndex : indexes) {
-                var quad = workspace.quads[quadIndex];
+                var quad = workspace.get(quadIndex);
                 var extents = quad.getExtents();
                 var posExtent = extents[axis];
                 var negExtent = extents[oppositeDirection];
@@ -282,12 +300,24 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             // longs directly has the same effect because of the encoding.
             Arrays.sort(points.elements(), 0, points.size());
 
-            // find gaps
-            partitions.clear();
+            // the current partition plane distance (dot product),
+            // updated when an interval ends or a side is encountered, used to add quads to quadsOn and for splitting
             float distance = Float.NaN;
+
+            // set of quads that are within the partition
             IntArrayList quadsBefore = null;
+
+            // set of quads that are on the partition plane
             IntArrayList quadsOn = null;
+
+            // number of overlapping intervals along the projection axis
             int thickness = 0;
+
+            // lazily generate partitions by keeping track of the current interval thickness and the quads that are on the partition plane
+            partitions.clear();
+            if (TranslucentGeometryCollector.SPLIT_QUADS) {
+                splittingGroup.clear();
+            }
             for (long point : points) {
                 switch (decodeType(point)) {
                     case INTERVAL_START -> {
@@ -344,11 +374,32 @@ abstract class InnerPartitionBSPNode extends BSPNode {
                             }
                             quadsBefore.add(pointQuadIndex);
                             if (quadsOn == null) {
-                                distance = decodeDistance(point);
+                                var ownDistance = decodeDistance(point);
+
+                                // update the splitting group if the distance didn't change
+                                if (TranslucentGeometryCollector.SPLIT_QUADS) {
+                                    if (ownDistance == distance || Float.isNaN(distance)) {
+                                        splittingGroup.add(pointQuadIndex);
+                                    } else {
+                                        if (splittingGroup.size() > biggestSplittingGroup.size()) {
+                                            biggestSplittingGroup.clear();
+                                            biggestSplittingGroup.addAll(splittingGroup);
+                                        }
+                                        splittingGroup.clear();
+                                    }
+                                }
+
+                                distance = ownDistance;
                             }
                         }
                     }
                 }
+            }
+
+            // check if the splitting group needs to be flushed
+            if (TranslucentGeometryCollector.SPLIT_QUADS && splittingGroup.size() > biggestSplittingGroup.size()) {
+                biggestSplittingGroup.clear();
+                biggestSplittingGroup.addAll(splittingGroup);
             }
 
             // check a different axis if everything is in one quadsBefore,
@@ -384,17 +435,244 @@ abstract class InnerPartitionBSPNode extends BSPNode {
                     partitions, axis, endsWithPlane);
         }
 
-        var intersectingHandling = handleIntersecting(workspace, indexes, depth, oldNode);
-        if (intersectingHandling != null) {
-            return intersectingHandling;
+        if (TranslucentGeometryCollector.SPLIT_QUADS) {
+            // try static topo sorting first because splitting quads is even more expensive
+            // TODO: re-enable static topo sorting once it fails on intersecting quads
+//            var multiLeafNode = buildTopoMultiLeafNode(workspace, indexes);
+//            if (multiLeafNode != null) {
+//                return multiLeafNode;
+//            }
+
+            // perform quad splitting to get a sortable result whether it's intersecting or just unsortable as-is
+            return handleUnsortableBySplitting(workspace, indexes, depth, oldNode, biggestSplittingGroup);
+        } else {
+            var intersectingHandling = handleIntersecting(workspace, indexes, depth, oldNode);
+            if (intersectingHandling != null) {
+                return intersectingHandling;
+            }
+
+            // attempt topo sorting on the geometry if intersection handling failed
+            var multiLeafNode = buildTopoMultiLeafNode(workspace, indexes);
+            if (multiLeafNode == null) {
+                throw new BSPBuildFailureException("No partition found but not intersecting and can't be statically topo sorted");
+            }
+            return multiLeafNode;
+        }
+    }
+
+    static private BSPNode handleUnsortableBySplitting(BSPWorkspace workspace, IntArrayList indexes, int depth, BSPNode oldNode, IntArrayList splittingGroup) {
+        // pick the first quad if there's no prepared splitting group
+        int representativeIndex;
+        if (splittingGroup.isEmpty()) {
+            representativeIndex = indexes.getInt(0);
+            splittingGroup.add(representativeIndex);
+        } else {
+            representativeIndex = splittingGroup.getInt(0);
+        }
+        var representative = (FullTQuad) workspace.get(representativeIndex);
+        var representativeFacing = representative.getFacing();
+        int initialSplittingGroupSize = splittingGroup.size();
+
+        // split all quads by the splitting group's plane
+        var splitPlane = representative.getVeryAccurateNormal();
+        var splitDistance = representative.getAccurateDotProduct();
+
+        IntArrayList inside = new IntArrayList();
+        IntArrayList outside = new IntArrayList();
+
+        for (int candidateIndex : indexes) {
+            // eliminate quads that are already in the splitting group
+            var isInSplittingGroup = false;
+            for (int i = 0; i < initialSplittingGroupSize; i++) {
+                if (candidateIndex == splittingGroup.getInt(i)) {
+                    isInSplittingGroup = true;
+                }
+            }
+            if (isInSplittingGroup) {
+                continue;
+            }
+
+            var insideQuad = (FullTQuad) workspace.get(candidateIndex);
+            var quadFacing = insideQuad.getFacing();
+
+            // eliminate quads that lie in the split plane
+            if (quadFacing == representativeFacing && insideQuad.getAccurateDotProduct() == splitDistance &&
+                    (representativeFacing != ModelQuadFacing.UNASSIGNED ||
+                            insideQuad.getVeryAccurateNormal().equals(representative.getVeryAccurateNormal()))) {
+                splittingGroup.add(candidateIndex);
+                continue;
+            }
+
+            var vertices = insideQuad.getVertices();
+
+            // calculate inside/outside for each vertex
+            int insideMap = 0;
+            int onPlaneMap = 0;
+            for (int i = 0; i < 4; i++) {
+                var vertex = vertices[i];
+                var dot = splitPlane.dot(vertex.x, vertex.y, vertex.z);
+                if (dot < splitDistance) {
+                    insideMap |= 1 << i;
+                } else if (dot == splitDistance) {
+                    onPlaneMap |= 1 << i;
+                }
+            }
+
+            var onPlaneCount = Integer.bitCount(onPlaneMap);
+            var insideCount = Integer.bitCount(insideMap);
+
+            // treat quads that are actually or nearly (i.e. bent) coplanar as on the plane
+            if (onPlaneCount >= 3) {
+                splittingGroup.add(candidateIndex);
+                continue;
+            }
+
+            // the quad is outside if all vertices are either outside or on the plane
+            if (insideMap == 0) {
+                outside.add(candidateIndex);
+                continue;
+            }
+
+            // the quad is inside if all vertices are either inside or on the plane
+            if ((insideMap | onPlaneMap) == 0b1111) {
+                inside.add(candidateIndex);
+                continue;
+            }
+
+            // after dealing with the other cases, now two vertices being on the plane implies the quad is split exactly along its diagonal
+            // insideCount is 2, onPlaneMap is 0b0101 or 0b1010
+            if (onPlaneCount == 2) {
+                // this case can be treated like even splitting if the two on-plane vertices are declared as each part of one of the sides
+                if (onPlaneMap == 0b0101) {
+                    insideMap |= 0b0001;
+                } else {
+                    insideMap |= 0b0010;
+                }
+                insideCount = 2;
+            }
+
+            // one vertex being on the plane now implies the quad is split on a vertex and through an edge.
+            // if there is one vertex inside (and two outside), move the on-plane vertex inside to produce an even split case.
+            // in the other case nothing needs to be done since for splitting the 0-bits in the insideMap are treated as outside.
+            else if (onPlaneCount == 1 && insideCount == 1) {
+                insideMap |= onPlaneMap;
+                insideCount = 2;
+            }
+
+            // split evenly with two quads or three quads (corner chopped off) depending on the orientation
+            FullTQuad outsideQuad = FullTQuad.splittingCopy(insideQuad);
+            if (insideCount == 2) {
+                splitQuadEven(insideMap, insideQuad, outsideQuad, splitPlane, splitDistance);
+            } else if (insideCount == 3) {
+                var secondInsideQuad = splitQuadOdd(insideMap, insideCount, insideQuad, outsideQuad, splitPlane, splitDistance);
+
+                // TODO: Implement this
+            } else {
+                var secondOutsideQuad = splitQuadOdd(insideMap, insideCount, insideQuad, outsideQuad, splitPlane, splitDistance);
+
+                // TODO: Implement this
+            }
+
+            inside.add(workspace.updateQuad(insideQuad, candidateIndex));
+            outside.add(workspace.pushQuad(outsideQuad));
         }
 
-        // attempt topo sorting on the geometry if intersection handling failed
-        var multiLeafNode = buildTopoMultiLeafNode(workspace, indexes);
-        if (multiLeafNode == null) {
-            throw new BSPBuildFailureException("No partition found but not intersecting and can't be statically topo sorted");
+        int axes = UNALIGNED_AXIS;
+        var facing = representative.useQuantizedFacing();
+        if (facing.isAligned()) {
+            axes = facing.getAxis();
         }
-        return multiLeafNode;
+        return InnerBinaryPartitionBSPNode.buildFromParts(workspace, indexes, depth, oldNode, inside, outside, splittingGroup, axes, representative.getQuantizedNormal(), representative.getQuantizedDotProduct());
+    }
+
+    static private void splitQuadEven(int vertexInsideMap, FullTQuad insideQuad, FullTQuad outsideQuad, Vector3fc splitPlane, float splitDistance) {
+        // split the quad with the plane by iterating all the edges and checking for intersection
+        var insideVertices = insideQuad.getVertices();
+        var outsideVertices = outsideQuad.getVertices();
+        for (int indexA = 0; indexA < 4; indexA++) {
+            var indexB = (indexA + 1) & 0b11;
+            var insideA = (vertexInsideMap & (1 << indexA)) != 0;
+            var insideB = (vertexInsideMap & (1 << indexB)) != 0;
+            if (insideA == insideB) {
+                continue;
+            }
+
+            // get the inner and outer vertices
+            ChunkVertexEncoder.Vertex insideVertex, outsideVertex;
+            int insideIndex, outsideIndex;
+            if (insideA) {
+                insideIndex = indexA;
+                outsideIndex = indexB;
+            } else {
+                insideIndex = indexB;
+                outsideIndex = indexA;
+            }
+            insideVertex = insideVertices[insideIndex];
+            outsideVertex = outsideVertices[outsideIndex];
+
+            // calculate the intersection point and interpolate attributes
+            var insideToOutsideX = outsideVertex.x - insideVertex.x;
+            var insideToOutsideY = outsideVertex.y - insideVertex.y;
+            var insideToOutsideZ = outsideVertex.z - insideVertex.z;
+            var outsideAmount = (splitDistance - splitPlane.dot(insideVertex.x, insideVertex.y, insideVertex.z)) /
+                    splitPlane.dot(insideToOutsideX, insideToOutsideY, insideToOutsideZ);
+
+            var newX = insideVertex.x + insideToOutsideX * outsideAmount;
+            var newY = insideVertex.y + insideToOutsideY * outsideAmount;
+            var newZ = insideVertex.z + insideToOutsideZ * outsideAmount;
+
+            var targetA = insideVertices[outsideIndex];
+            var targetB = outsideVertices[insideIndex];
+            targetA.x = newX;
+            targetA.y = newY;
+            targetA.z = newZ;
+            targetB.x = newX;
+            targetB.y = newY;
+            targetB.z = newZ;
+
+            interpolateAttributes(insideVertex, outsideVertex, targetA, targetB, outsideAmount);
+        }
+
+        insideQuad.updateSplitQuadAfterVertexModification();
+        outsideQuad.updateSplitQuadAfterVertexModification();
+    }
+
+    static private FullTQuad splitQuadOdd(int vertexInsideMap, int insideCount, FullTQuad insideQuad, FullTQuad outsideQuad, Vector3fc splitPlane, float splitDistance) {
+        // split quad by finding the vertex that is outside, the two intersection points and manually constructing
+        var insideVertices = insideQuad.getVertices();
+        var outsideVertices = outsideQuad.getVertices();
+
+        if (insideCount == 3) {
+            vertexInsideMap = vertexInsideMap ^ 0b1111;
+        }
+        var cornerIndex = Integer.numberOfTrailingZeros(vertexInsideMap);
+
+        // TODO
+        return null;
+    }
+
+    private static void interpolateAttributes(ChunkVertexEncoder.Vertex inside, ChunkVertexEncoder.Vertex outside, ChunkVertexEncoder.Vertex targetA, ChunkVertexEncoder.Vertex targetB, float outsideAmount) {
+        var newColor = ColorMixer.mix(inside.color, outside.color, outsideAmount);
+        targetA.color = newColor;
+        targetB.color = newColor;
+
+        var newAo = Mth.lerp(outsideAmount, inside.ao, outside.ao);
+        targetA.ao = newAo;
+        targetB.ao = newAo;
+
+        var newU = Mth.lerp(outsideAmount, inside.u, outside.u);
+        targetA.u = newU;
+        targetB.u = newU;
+
+        var newV = Mth.lerp(outsideAmount, inside.v, outside.v);
+        targetA.v = newV;
+        targetB.v = newV;
+
+        var newLightBl = Mth.lerp(outsideAmount, inside.light & 0xFF, outside.light & 0xFF);
+        var newLightSl = Mth.lerp(outsideAmount, inside.light >> 16, outside.light >> 16);
+        var newLight = (((int) newLightSl & 0xFF) << 16) | ((int) newLightBl & 0xFF);
+        targetA.light = newLight;
+        targetB.light = newLight;
     }
 
     static private BSPNode handleIntersecting(BSPWorkspace workspace, IntArrayList indexes, int depth, BSPNode oldNode) {
@@ -435,8 +713,8 @@ abstract class InnerPartitionBSPNode extends BSPNode {
                 break;
             }
 
-            var quadA = workspace.quads[indexes.getInt(i)];
-            var quadB = workspace.quads[indexes.getInt(j)];
+            var quadA = workspace.get(indexes.getInt(i));
+            var quadB = workspace.get(indexes.getInt(j));
 
             // aligned quads intersect if their bounding boxes intersect
             if (TQuad.extentsIntersect(quadA, quadB)) {
@@ -514,7 +792,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         var activeToRealIndex = new int[quadCount];
         for (int i = 0; i < indexes.size(); i++) {
             var quadIndex = indexes.getInt(i);
-            quads[i] = workspace.quads[quadIndex];
+            quads[i] = workspace.get(quadIndex);
             activeToRealIndex[i] = quadIndex;
         }
 
@@ -540,7 +818,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
 
             for (int i = 0; i < indexes.size(); i++) {
                 var quadIndex = indexes.getInt(i);
-                keys[i] = MathUtil.floatToComparableInt(workspace.quads[quadIndex].getAccurateDotProduct());
+                keys[i] = MathUtil.floatToComparableInt(workspace.get(quadIndex).getAccurateDotProduct());
             }
 
             quadIndexes = RadixSort.sort(keys);
@@ -553,7 +831,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
 
             for (int i = 0; i < indexes.size(); i++) {
                 var quadIndex = indexes.getInt(i);
-                int dotProductComponent = MathUtil.floatToComparableInt(workspace.quads[quadIndex].getAccurateDotProduct());
+                int dotProductComponent = MathUtil.floatToComparableInt(workspace.get(quadIndex).getAccurateDotProduct());
                 sortData[i] = (long) dotProductComponent << 32 | quadIndex;
             }
 
@@ -582,7 +860,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             // based one each quad's facing, order them forwards or backwards,
             // this means forwards is written from the start and backwards is written from the end
             var quadIndex = decodeQuadIndex(points.getLong(i));
-            if (workspace.quads[quadIndex].getFacing().getSign() == 1) {
+            if (workspace.get(quadIndex).getFacing().getSign() == 1) {
                 quadIndexes[forwards++] = quadIndex;
             } else {
                 quadIndexes[backwards--] = quadIndex;
