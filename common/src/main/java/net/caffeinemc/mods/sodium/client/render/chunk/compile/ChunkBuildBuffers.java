@@ -112,7 +112,7 @@ public class ChunkBuildBuffers {
         }
 
         var totalVertexCount = prevMesh.getVertexCounts()[ModelQuadFacing.UNASSIGNED.ordinal()] +
-                TranslucentData.vertexCountToQuadCount(updatedQuadIndexes.getAddedQuadCount());
+                TranslucentData.quadCountToVertexCount(updatedQuadIndexes.getAddedQuadCount());
         var vertexStride = this.vertexType.getVertexFormat().getStride();
         var mergedBuffer = new NativeBuffer(totalVertexCount * vertexStride);
         var quadStride = vertexStride * TranslucentData.VERTICES_PER_QUAD;
