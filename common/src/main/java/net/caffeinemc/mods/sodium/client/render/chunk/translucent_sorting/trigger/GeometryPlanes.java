@@ -2,6 +2,9 @@ package net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.trigg
 
 import java.util.Collection;
 
+import it.unimi.dsi.fastutil.objects.Object2ReferenceMap;
+import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenCustomHashMap;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.AlignableNormal;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
@@ -16,7 +19,7 @@ import net.minecraft.core.SectionPos;
  */
 public class GeometryPlanes {
     private NormalPlanes[] alignedPlanes;
-    private Object2ReferenceOpenHashMap<Vector3fc, NormalPlanes> unalignedPlanes;
+    private Object2ReferenceMap<Vector3fc, NormalPlanes> unalignedPlanes;
 
     public NormalPlanes[] getAligned() {
         return this.alignedPlanes;
@@ -36,9 +39,9 @@ public class GeometryPlanes {
         return this.unalignedPlanes.values();
     }
 
-    public Object2ReferenceOpenHashMap<Vector3fc, NormalPlanes> getUnalignedOrCreate() {
+    public Object2ReferenceMap<Vector3fc, NormalPlanes> getUnalignedOrCreate() {
         if (this.unalignedPlanes == null) {
-            this.unalignedPlanes = new Object2ReferenceOpenHashMap<>();
+            this.unalignedPlanes = new Object2ReferenceOpenCustomHashMap<>(AlignableNormal.HASH_STRATEGY);
         }
         return this.unalignedPlanes;
     }
@@ -104,7 +107,7 @@ public class GeometryPlanes {
         }
     }
 
-    private void prepareAndInsert(Object2ReferenceOpenHashMap<Vector3fc, float[]> distancesByNormal) {
+    private void prepareAndInsert(Object2ReferenceMap<Vector3fc, float[]> distancesByNormal) {
         if (this.alignedPlanes != null) {
             for (var normalPlanes : this.alignedPlanes) {
                 if (normalPlanes != null) {
@@ -123,7 +126,7 @@ public class GeometryPlanes {
         this.prepareAndInsert(null);
     }
 
-    public Object2ReferenceOpenHashMap<Vector3fc, float[]> prepareAndGetDistances() {
+    public Object2ReferenceMap<Vector3fc, float[]> prepareAndGetDistances() {
         var distancesByNormal = new Object2ReferenceOpenHashMap<Vector3fc, float[]>(10);
         this.prepareAndInsert(distancesByNormal);
         return distancesByNormal;

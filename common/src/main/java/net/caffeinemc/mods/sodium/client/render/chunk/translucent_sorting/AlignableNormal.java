@@ -1,5 +1,6 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting;
 
+import it.unimi.dsi.fastutil.Hash;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
@@ -44,30 +45,6 @@ public class AlignableNormal extends Vector3f {
         return this.alignedDirection != UNASSIGNED;
     }
 
-    @Override
-    public int hashCode() {
-        if (this.isAligned()) {
-            return this.alignedDirection;
-        } else {
-            return super.hashCode() + ModelQuadFacing.DIRECTIONS;
-        }
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) {
-            return true;
-        }
-        if (!super.equals(obj)) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
-        AlignableNormal other = (AlignableNormal) obj;
-        return this.alignedDirection == other.alignedDirection;
-    }
-
     public static boolean queryRange(float[] sortedDistances, float start, float end) {
         // test that there is actually an entry in the query range
         int result = FloatArrays.binarySearch(sortedDistances, start);
@@ -91,4 +68,35 @@ public class AlignableNormal extends Vector3f {
         }
         return false;
     }
+
+    public static final Hash.Strategy<? super Vector3fc> HASH_STRATEGY = new Hash.Strategy<>() {
+        @Override
+        public int hashCode(Vector3fc vector) {
+            if (vector instanceof AlignableNormal aligned && aligned.isAligned()) {
+                return aligned.alignedDirection;
+            }
+
+            return vector.hashCode();
+        }
+
+        @Override
+        public boolean equals(Vector3fc a, Vector3fc b) {
+            if (a == b) {
+                return true;
+            }
+            if (a == null || b == null) {
+                return false;
+            }
+
+            if (a instanceof AlignableNormal alignedA && b instanceof AlignableNormal alignedB &&
+                    alignedA.isAligned() && alignedB.isAligned()) {
+                return alignedA.alignedDirection == alignedB.alignedDirection;
+            }
+
+            var aVec = (Vector3f) a;
+            var bVec = (Vector3f) b;
+
+            return aVec.x == bVec.x && aVec.y == bVec.y && aVec.z == bVec.z;
+        }
+    };
 }

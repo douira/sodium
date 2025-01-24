@@ -1,12 +1,13 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.trigger;
 
-import org.joml.Vector3fc;
-
-import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ReferenceMap;
+import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenCustomHashMap;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.AlignableNormal;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.DynamicData;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.TranslucentData;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.trigger.SortTriggering.SectionTriggers;
 import net.minecraft.core.SectionPos;
+import org.joml.Vector3fc;
 
 /**
  * Performs triggering based on globally-indexed face planes, bucketed by their normals.
@@ -20,7 +21,7 @@ class GFNITriggers implements SectionTriggers<DynamicData> {
     /**
      * A map of all the normal lists, indexed by their normal.
      */
-    private Object2ReferenceOpenHashMap<Vector3fc, NormalList> normalLists = new Object2ReferenceOpenHashMap<>();
+    private final Object2ReferenceMap<Vector3fc, NormalList> normalLists = new Object2ReferenceOpenCustomHashMap<>(AlignableNormal.HASH_STRATEGY);
 
     int getUniqueNormalCount() {
         return this.normalLists.size();
@@ -33,7 +34,7 @@ class GFNITriggers implements SectionTriggers<DynamicData> {
         }
     }
 
-    private void addSectionInNewNormalLists(DynamicData dynamicData, NormalPlanes normalPlanes) {
+    private void addSectionInNewNormalLists(NormalPlanes normalPlanes) {
         var normal = normalPlanes.normal;
         var normalList = this.normalLists.get(normal);
         if (normalList == null) {
@@ -94,14 +95,14 @@ class GFNITriggers implements SectionTriggers<DynamicData> {
         if (aligned != null) {
             for (var normalPlane : aligned) {
                 if (normalPlane != null) {
-                    this.addSectionInNewNormalLists(data, normalPlane);
+                    this.addSectionInNewNormalLists(normalPlane);
                 }
             }
         }
         var unaligned = geometryPlanes.getUnaligned();
         if (unaligned != null) {
             for (var normalPlane : unaligned) {
-                this.addSectionInNewNormalLists(data, normalPlane);
+                this.addSectionInNewNormalLists(normalPlane);
             }
         }
 
