@@ -111,6 +111,11 @@ public class ChunkBuildBuffers {
             return null;
         }
 
+//        var oldQuadCount = TranslucentData.vertexCountToQuadCount(prevMesh.getVertexCounts()[ModelQuadFacing.UNASSIGNED.ordinal()]);
+//        var addedQuadCount = updatedQuadIndexes.getAddedQuadCount();
+//        var totalNewQuadCount = oldQuadCount + addedQuadCount;
+//        System.out.println("old quads: " + oldQuadCount + ", added quads: " + addedQuadCount + ", total quads: " + totalNewQuadCount + ", new/old factor: " + (float) totalNewQuadCount / oldQuadCount);
+
         var totalVertexCount = prevMesh.getVertexCounts()[ModelQuadFacing.UNASSIGNED.ordinal()] +
                 TranslucentData.quadCountToVertexCount(updatedQuadIndexes.getAddedQuadCount());
         var vertexStride = this.vertexType.getVertexFormat().getStride();
