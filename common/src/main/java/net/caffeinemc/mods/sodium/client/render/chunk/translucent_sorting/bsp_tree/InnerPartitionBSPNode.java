@@ -252,7 +252,8 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         // keep track of global best splitting group for splitting quads if enabled
         IntArrayList bestSplittingGroup = null;
         IntArrayList splittingGroup = null;
-        if (TranslucentGeometryCollector.SPLIT_QUADS) {
+        boolean canSplitQuads = workspace.canSplitQuads();
+        if (canSplitQuads) {
             bestSplittingGroup = new IntArrayList(5);
             splittingGroup = new IntArrayList(5);
         }
@@ -319,7 +320,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
 
             // lazily generate partitions by keeping track of the current interval thickness and the quads that are on the partition plane
             partitions.clear();
-            if (TranslucentGeometryCollector.SPLIT_QUADS) {
+            if (canSplitQuads) {
                 splittingGroup.clear();
             }
             for (int i = 0, size = points.size(); i < size; i++) {
@@ -382,7 +383,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
                                 var ownDistance = decodeDistance(point);
 
                                 // update the splitting group if the distance didn't change
-                                if (TranslucentGeometryCollector.SPLIT_QUADS) {
+                                if (canSplitQuads) {
                                     if (ownDistance == distance || Float.isNaN(distance)) {
                                         splittingGroup.add(pointQuadIndex);
                                     } else {
@@ -398,7 +399,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             }
 
             // check if the splitting group needs to be flushed
-            if (TranslucentGeometryCollector.SPLIT_QUADS) {
+            if (canSplitQuads) {
                 flushBestSplittingGroup(splittingGroup, bestSplittingGroup, axis);
             }
 
@@ -435,13 +436,12 @@ abstract class InnerPartitionBSPNode extends BSPNode {
                     partitions, axis, endsWithPlane);
         }
 
-        if (TranslucentGeometryCollector.SPLIT_QUADS) {
+        if (canSplitQuads) {
             // try static topo sorting first because splitting quads is even more expensive
-            // TODO: re-enable static topo sorting once it fails on intersecting quads
-//            var multiLeafNode = buildTopoMultiLeafNode(workspace, indexes);
-//            if (multiLeafNode != null) {
-//                return multiLeafNode;
-//            }
+            var multiLeafNode = buildTopoMultiLeafNode(workspace, indexes, true);
+            if (multiLeafNode != null) {
+                return multiLeafNode;
+            }
 
             // perform quad splitting to get a sortable result whether it's intersecting or just unsortable as-is
             return handleUnsortableBySplitting(workspace, indexes, depth, oldNode, bestSplittingGroup);
@@ -452,7 +452,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             }
 
             // attempt topo sorting on the geometry if intersection handling failed
-            var multiLeafNode = buildTopoMultiLeafNode(workspace, indexes);
+            var multiLeafNode = buildTopoMultiLeafNode(workspace, indexes, false);
             if (multiLeafNode == null) {
                 throw new BSPBuildFailureException("No partition found but not intersecting and can't be statically topo sorted");
             }
@@ -574,6 +574,20 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         var uniqueVertices = Integer.bitCount(uniqueVertexMap);
         if (uniqueVertices < 3) {
             throw new IllegalStateException("Unexpected quad with less than 3 unique vertices");
+        }
+
+        // cancel splitting after handling special cases if the new geometry limit has been reached
+        if (!workspace.canSplitQuads()) {
+            // put on, inside, outside based on which side has the most vertices
+            var outsideCount = 4 - insideCount - onPlaneCount;
+            if (onPlaneCount >= insideCount && onPlaneCount >= outsideCount) {
+                splittingGroup.add(candidateIndex);
+            } else if (insideCount >= outsideCount) {
+                inside.add(candidateIndex);
+            } else {
+                outside.add(candidateIndex);
+            }
+            return;
         }
 
         FullTQuad outsideQuad = FullTQuad.splittingCopy(insideQuad);
@@ -931,7 +945,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         }
     }
 
-    static private BSPNode buildTopoMultiLeafNode(BSPWorkspace workspace, IntArrayList indexes) {
+    static private BSPNode buildTopoMultiLeafNode(BSPWorkspace workspace, IntArrayList indexes, boolean failOnIntersection) {
         var quadCount = indexes.size();
 
         if (quadCount > TranslucentGeometryCollector.STATIC_TOPO_UNKNOWN_FALLBACK_LIMIT) {
@@ -947,7 +961,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         }
 
         var indexWriter = new QuadIndexConsumerIntoArray(quadCount);
-        if (!TopoGraphSorting.topoGraphSort(indexWriter, quads, quads.length, activeToRealIndex, null, null)) {
+        if (!TopoGraphSorting.topoGraphSort(indexWriter, quads, quads.length, activeToRealIndex, null, null, failOnIntersection)) {
             return null;
         }
 

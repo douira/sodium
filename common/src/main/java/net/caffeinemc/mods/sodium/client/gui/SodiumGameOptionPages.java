@@ -17,6 +17,7 @@ import net.caffeinemc.mods.sodium.client.gui.options.control.SliderControl;
 import net.caffeinemc.mods.sodium.client.gui.options.control.TickBoxControl;
 import net.caffeinemc.mods.sodium.client.gui.options.storage.MinecraftOptionsStorage;
 import net.caffeinemc.mods.sodium.client.gui.options.storage.SodiumOptionsStorage;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.QuadSplittingMode;
 import net.minecraft.client.*;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ParticleStatus;
@@ -340,6 +341,16 @@ public class SodiumGameOptionPages {
                         .setBinding((opts, value) -> opts.inactivityFpsLimit().set(value), opts -> opts.inactivityFpsLimit().get())
                         .build())
                 .build());
+
+        groups.add(OptionGroup.createBuilder()
+                .add(OptionImpl.createBuilder(QuadSplittingMode.class, sodiumOpts)
+                        .setName(Component.translatable("sodium.options.quad_splitting.name"))
+                        .setTooltip(Component.translatable("sodium.options.quad_splitting.tooltip"))
+                        .setControl(option -> new CyclingControl<>(option, QuadSplittingMode.class))
+                        .setBinding((opts, value) -> opts.performance.quadSplittingMode = value, opts -> opts.performance.quadSplittingMode)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build()).build());
 
         return new OptionPage(Component.translatable("sodium.options.pages.performance"), ImmutableList.copyOf(groups));
     }
