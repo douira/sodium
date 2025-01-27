@@ -5,6 +5,7 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.Monitor;
 import com.mojang.blaze3d.platform.VideoMode;
 import com.mojang.blaze3d.platform.Window;
+import net.caffeinemc.mods.sodium.client.SodiumClientMod;
 import net.caffeinemc.mods.sodium.client.compatibility.environment.OsUtils;
 import net.caffeinemc.mods.sodium.client.compatibility.workarounds.Workarounds;
 import net.caffeinemc.mods.sodium.client.gl.arena.staging.MappedStagingBuffer;
@@ -349,6 +350,7 @@ public class SodiumGameOptionPages {
                         .setControl(option -> new CyclingControl<>(option, QuadSplittingMode.class))
                         .setBinding((opts, value) -> opts.performance.quadSplittingMode = value, opts -> opts.performance.quadSplittingMode)
                         .setImpact(OptionImpact.MEDIUM)
+                        .setEnabled(() -> SodiumClientMod.options().debug.terrainSortingEnabled)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build()).build());
 
