@@ -153,7 +153,7 @@ public class CloudRenderer {
 
         FogParameters fogParameters = FogRenderer.setupFog(camera, FogRenderer.FogMode.FOG_TERRAIN, new Vector4f(prevFogParameters.red(), prevFogParameters.green(), prevFogParameters.blue(), prevFogParameters.alpha()), renderDistance * 8, shouldUseWorldFog(level, cameraPos), tickDelta);
 
-        RenderSystem.setShaderColor(ARGB.from8BitChannel(ARGB.red(color)), ARGB.from8BitChannel(ARGB.green(color)), ARGB.from8BitChannel(ARGB.blue(color)), 0.8F);
+        RenderSystem.setShaderColor(ARGB.redFloat(color), ARGB.greenFloat(color), ARGB.blueFloat(color), 0.8F);
         RenderSystem.setShaderFog(fogParameters);
 
         RenderTarget renderTarget = Minecraft.getInstance().levelRenderer.getCloudsTarget();
@@ -175,6 +175,7 @@ public class CloudRenderer {
             RenderSystem.disableCull();
         }
 
+        RenderSystem.enableDepthTest();
         RenderSystem.depthFunc(GL32C.GL_LESS);
 
         // Draw
@@ -184,6 +185,7 @@ public class CloudRenderer {
 
         // State teardown
         RenderSystem.depthFunc(GL32C.GL_LEQUAL);
+        RenderSystem.disableDepthTest();
 
         if (flat) {
             RenderSystem.enableCull();

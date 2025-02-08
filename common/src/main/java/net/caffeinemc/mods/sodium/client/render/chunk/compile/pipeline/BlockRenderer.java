@@ -43,6 +43,8 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
+import java.util.Iterator;
+
 public class BlockRenderer extends AbstractBlockRenderContext {
     private final ColorProviderRegistry colorProviderRegistry;
     private final int[] vertexColors = new int[4];
@@ -55,6 +57,7 @@ public class BlockRenderer extends AbstractBlockRenderContext {
     @Nullable
     private ColorProvider<BlockState> colorProvider;
     private TranslucentGeometryCollector collector;
+    private boolean allowDowngrade;
 
     public BlockRenderer(ColorProviderRegistry colorRegistry, LightPipelineProvider lighters) {
         this.colorProviderRegistry = colorRegistry;
@@ -99,10 +102,21 @@ public class BlockRenderer extends AbstractBlockRenderContext {
         modelData = PlatformModelAccess.getInstance().getModelData(slice, model, state, pos, slice.getPlatformModelData(pos));
 
         Iterable<RenderType> renderTypes = PlatformModelAccess.getInstance().getModelRenderTypes(level, model, state, pos, random, modelData);
+        this.allowDowngrade = true;
 
-        for (RenderType type : renderTypes) {
-            this.type = type;
-            ((FabricBakedModel) model).emitBlockQuads(this.level, state, pos, this.randomSupplier, this);
+        Iterator<RenderType> it = renderTypes.iterator();
+        var defaultType = ItemBlockRenderTypes.getChunkRenderType(state);
+
+        while (it.hasNext()) {
+            this.type = it.next();
+
+            // TODO: This can be removed once we have a better solution for https://github.com/CaffeineMC/sodium/issues/2868
+            // If the model contains any materials that are not the default, we can't allow the block to be downgraded. This avoids a potentially incorrect render order if there are overlapping quads.
+            if (it.hasNext() || this.type != defaultType) {
+                this.allowDowngrade = false;
+            }
+
+            ((FabricBakedModel) model).emitBlockQuads(getEmitter(), this.level, state, pos, this.randomSupplier, this::isFaceCulled);
         }
 
         type = null;
@@ -115,7 +129,6 @@ public class BlockRenderer extends AbstractBlockRenderContext {
     @Override
     protected void processQuad(MutableQuadViewImpl quad) {
         final RenderMaterial mat = quad.material();
-        final int colorIndex = mat.disableColorIndex() ? -1 : quad.colorIndex();
         final TriState aoMode = mat.ambientOcclusion();
         final ShadeMode shadeMode = mat.shadeMode();
         final LightMode lightMode;
@@ -135,13 +148,15 @@ public class BlockRenderer extends AbstractBlockRenderContext {
             material = DefaultMaterials.forRenderLayer(blendMode.blockRenderLayer == null ? type : blendMode.blockRenderLayer);
         }
 
-        this.colorizeQuad(quad, colorIndex);
+        this.tintQuad(quad);
         this.shadeQuad(quad, lightMode, emissive, shadeMode);
         this.bufferQuad(quad, this.quadLightData.br, material);
     }
 
-    private void colorizeQuad(MutableQuadViewImpl quad, int colorIndex) {
-        if (colorIndex != -1) {
+    private void tintQuad(MutableQuadViewImpl quad) {
+        int tintIndex = quad.tintIndex();
+
+        if (tintIndex != -1) {
             ColorProvider<BlockState> colorProvider = this.colorProvider;
 
             if (colorProvider != null) {
@@ -228,7 +243,7 @@ public class BlockRenderer extends AbstractBlockRenderContext {
     }
 
     private @Nullable TerrainRenderPass attemptPassDowngrade(TextureAtlasSprite sprite, TerrainRenderPass pass) {
-        if (Workarounds.isWorkaroundEnabled(Workarounds.Reference.INTEL_DEPTH_BUFFER_COMPARISON_UNRELIABLE)) {
+        if (!allowDowngrade || Workarounds.isWorkaroundEnabled(Workarounds.Reference.INTEL_DEPTH_BUFFER_COMPARISON_UNRELIABLE)) {
             return null;
         }
 
@@ -256,14 +271,23 @@ public class BlockRenderer extends AbstractBlockRenderContext {
     }
 
     private static TerrainRenderPass getDowngradedPass(TextureAtlasSprite sprite, TerrainRenderPass pass) {
-        if (sprite.contents() instanceof SpriteContentsExtension contents) {
-            if (pass == DefaultTerrainRenderPasses.TRANSLUCENT && !contents.sodium$hasTranslucentPixels()) {
-                pass = DefaultTerrainRenderPasses.CUTOUT;
+        if (sprite instanceof TextureAtlasSpriteExtension spriteExt) {
+            // Some mods may use a custom ticker which we cannot look into. To avoid problems with these mods,
+            // do not attempt to downgrade the render pass.
+            if (spriteExt.sodium$hasUnknownImageContents()) {
+                return pass;
             }
-            if (pass == DefaultTerrainRenderPasses.CUTOUT && !contents.sodium$hasTransparentPixels()) {
-                pass = DefaultTerrainRenderPasses.SOLID;
+
+            if (sprite.contents() instanceof SpriteContentsExtension contentsExt) {
+                if (pass == DefaultTerrainRenderPasses.TRANSLUCENT && !contentsExt.sodium$hasTranslucentPixels()) {
+                    pass = DefaultTerrainRenderPasses.CUTOUT;
+                }
+                if (pass == DefaultTerrainRenderPasses.CUTOUT && !contentsExt.sodium$hasTransparentPixels()) {
+                    pass = DefaultTerrainRenderPasses.SOLID;
+                }
             }
         }
+
         return pass;
     }
 }
