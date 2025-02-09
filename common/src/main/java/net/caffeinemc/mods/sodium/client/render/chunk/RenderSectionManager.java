@@ -701,8 +701,9 @@ public class RenderSectionManager {
             count++;
         }
 
-        list.add(String.format("Geometry Pool: %d/%d MiB (%d buffers)", MathUtil.toMib(geometryDeviceUsed), MathUtil.toMib(geometryDeviceAllocated), count));
-        list.add(String.format("Index Pool: %d/%d MiB", MathUtil.toMib(indexDeviceUsed), MathUtil.toMib(indexDeviceAllocated)));
+        list.add(String.format("Pools: Geometry %d/%d MiB, Index %d/%d MiB (%d buffers)",
+                MathUtil.toMib(geometryDeviceUsed), MathUtil.toMib(geometryDeviceAllocated),
+                MathUtil.toMib(indexDeviceUsed), MathUtil.toMib(indexDeviceAllocated), count));
         list.add(String.format("Transfer Queue: %s", this.regions.getStagingBuffer().toString()));
 
         list.add(String.format("Chunk Builder: Permits=%02d (E %03d) | Busy=%02d | Total=%02d",

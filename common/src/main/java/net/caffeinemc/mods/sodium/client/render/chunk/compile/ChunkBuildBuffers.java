@@ -6,7 +6,6 @@ import net.caffeinemc.mods.sodium.client.render.chunk.compile.buffers.BakedChunk
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.buffers.ChunkModelBuilder;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionInfo;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
-import net.caffeinemc.mods.sodium.client.render.chunk.data.SectionRenderDataUnsafe;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.material.Material;

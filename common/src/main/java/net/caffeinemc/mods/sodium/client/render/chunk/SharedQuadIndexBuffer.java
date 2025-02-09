@@ -73,14 +73,6 @@ public class SharedQuadIndexBuffer {
         commandList.deleteBuffer(this.buffer);
     }
 
-    public GlIndexType getIndexFormat() {
-        return this.indexType.getFormat();
-    }
-
-    public IndexType getIndexType() {
-        return this.indexType;
-    }
-
     public enum IndexType {
         SHORT(GlIndexType.UNSIGNED_SHORT, 64 * 1024) {
             @Override

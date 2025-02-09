@@ -229,9 +229,9 @@ public class RenderRegion {
 
             // the magic number 756 for the initial size is arbitrary, it was made up.
             var initialVertices = 756;
-            this.geometryArena = new GlBufferArena(commandList, REGION_SIZE * initialVertices, stride, stagingBuffer, false);
+            this.geometryArena = new GlBufferArena(commandList, REGION_SIZE * initialVertices, stride, stagingBuffer);
             var initialIndices = (initialVertices / 4) * 6;
-            this.indexArena = new GlBufferArena(commandList, REGION_SIZE * initialIndices, Integer.BYTES, stagingBuffer, true);
+            this.indexArena = new GlBufferArena(commandList, REGION_SIZE * initialIndices, Integer.BYTES, stagingBuffer);
         }
 
         public void updateTessellation(CommandList commandList, GlTessellation tessellation) {
