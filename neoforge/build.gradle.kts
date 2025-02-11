@@ -61,7 +61,7 @@ dependencies {
     jarJar(project(":neoforge", "service"))
 }
 
-val serviceJar = tasks.create<Jar>("serviceJar") {
+val serviceJar = tasks.register<Jar>("serviceJar") {
     from(configurationCommonServiceJava)
     from(configurationCommonServiceResources)
 
