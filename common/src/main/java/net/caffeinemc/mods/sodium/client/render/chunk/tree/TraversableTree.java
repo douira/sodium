@@ -246,9 +246,9 @@ public class TraversableTree extends Tree {
         if ((inside & INSIDE_DISTANCE) == 0) {
             // coordinates of the point to compare (in view space)
             // this is the closest point within the bounding box to the center (0, 0, 0)
-            float dx = nearestToZero(x, x + 16) - transform.fracX;
-            float dy = nearestToZero(y, y + 16) - transform.fracY;
-            float dz = nearestToZero(z, z + 16) - transform.fracZ;
+            float dx = nearestToZero(x - 1, x + 17) - transform.fracX;
+            float dy = nearestToZero(y - 1, y + 17) - transform.fracY;
+            float dz = nearestToZero(z - 1, z + 17) - transform.fracZ;
 
             return cylindricalDistanceTest(dx, dy, dz, this.distanceLimit);
         }
