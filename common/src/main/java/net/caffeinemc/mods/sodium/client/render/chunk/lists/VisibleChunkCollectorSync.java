@@ -59,7 +59,7 @@ public class VisibleChunkCollectorSync extends SectionTree implements RenderList
     }
 
     @Override
-    public boolean sortSections() {
+    public boolean doSectionSorting() {
         return true;
     }
 }

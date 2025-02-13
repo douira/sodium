@@ -66,7 +66,7 @@ public class VisibleChunkCollectorAsync implements SectionTree.VisibleSectionVis
     }
 
     @Override
-    public boolean sortSections() {
+    public boolean doSectionSorting() {
         return false;
     }
 }
