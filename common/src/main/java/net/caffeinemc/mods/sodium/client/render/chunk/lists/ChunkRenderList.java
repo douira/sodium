@@ -1,7 +1,6 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.lists;
 
 import net.caffeinemc.mods.sodium.client.render.chunk.LocalSectionIndex;
-import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionFlags;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.util.iterator.ByteArrayIterator;
@@ -49,9 +48,7 @@ public class ChunkRenderList {
     // clamping the relative camera position to the region bounds means there can only be very few different distances
     private static final int SORTING_HISTOGRAM_SIZE = RenderRegion.REGION_WIDTH + RenderRegion.REGION_HEIGHT + RenderRegion.REGION_LENGTH - 2;
 
-    public void prepareForRender(SectionPos cameraPos, int[] sortItems) {
-        this.sortSections(cameraPos, sortItems);
-
+    public void updateBatchCache() {
         // invalidate batch cache if the render list changed
         if (this.prevSectionsWithGeometryCount != this.sectionsWithGeometryCount ||
                 !Arrays.equals(this.sectionsWithGeometry, this.prevSectionsWithGeometry)) {

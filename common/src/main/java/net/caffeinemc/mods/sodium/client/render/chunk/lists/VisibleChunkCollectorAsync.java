@@ -64,4 +64,9 @@ public class VisibleChunkCollectorAsync implements SectionTree.VisibleSectionVis
     public void setCachedSortItems(int[] sortItems) {
         VisibleChunkCollectorAsync.sortItems = sortItems;
     }
+
+    @Override
+    public boolean sortSections() {
+        return false;
+    }
 }

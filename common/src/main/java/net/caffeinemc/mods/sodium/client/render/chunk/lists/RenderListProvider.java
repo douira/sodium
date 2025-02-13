@@ -12,6 +12,8 @@ public interface RenderListProvider {
 
     void setCachedSortItems(int[] sortItems);
 
+    boolean sortSections();
+
     default SortedRenderLists createRenderLists(Viewport viewport) {
         // sort the regions by distance to fix rare region ordering bugs
         var sectionPos = viewport.getChunkCoord();
@@ -45,8 +47,15 @@ public interface RenderListProvider {
             sorted.add(renderList);
         }
 
-        for (var list : sorted) {
-            list.sortSections(sectionPos, sortItems);
+        if (this.sortSections()) {
+            for (var list : sorted) {
+                list.sortSections(sectionPos, sortItems);
+                list.updateBatchCache();
+            }
+        } else {
+            for (var list : sorted) {
+                list.updateBatchCache();
+            }
         }
 
         return new SortedRenderLists(sorted);

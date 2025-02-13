@@ -47,6 +47,13 @@ public class ChunkSortOutput extends BuilderTaskOutput {
 
     @Override
     protected long calculateResultSize() {
-        return this.indexBuffer == null ? 0 : this.indexBuffer.getLength();
+        if (this.sorter == null) {
+            return 0;
+        }
+        var indexBuffer = this.sorter.getIndexBuffer();
+        if (indexBuffer == null) {
+            return 0;
+        }
+        return indexBuffer.getLength();
     }
 }

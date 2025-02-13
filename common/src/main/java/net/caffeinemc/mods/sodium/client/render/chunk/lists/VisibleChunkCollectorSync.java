@@ -57,4 +57,9 @@ public class VisibleChunkCollectorSync extends SectionTree implements RenderList
     public void setCachedSortItems(int[] sortItems) {
         VisibleChunkCollectorSync.sortItems = sortItems;
     }
+
+    @Override
+    public boolean sortSections() {
+        return true;
+    }
 }
