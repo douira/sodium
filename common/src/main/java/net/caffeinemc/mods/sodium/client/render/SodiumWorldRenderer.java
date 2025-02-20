@@ -344,9 +344,8 @@ public class SodiumWorldRenderer {
 
             while (renderSectionIterator.hasNext()) {
                 var renderSectionId = renderSectionIterator.nextByteAsInt();
-                var renderSection = renderRegion.getSection(renderSectionId);
 
-                var blockEntities = renderSection.getCulledBlockEntities();
+                var blockEntities = renderRegion.getCulledBlockEntities(renderSectionId);
 
                 if (blockEntities == null) {
                     continue;
@@ -371,7 +370,7 @@ public class SodiumWorldRenderer {
                                            LocalPlayer player,
                                            LocalBooleanRef isGlowing) {
         for (var renderSection : this.renderSectionManager.getSectionsWithGlobalEntities()) {
-            var blockEntities = renderSection.getGlobalBlockEntities();
+            var blockEntities = renderSection.getRegion().getGlobalBlockEntities(renderSection.getSectionIndex());
 
             if (blockEntities == null) {
                 continue;
@@ -445,9 +444,7 @@ public class SodiumWorldRenderer {
 
             while (renderSectionIterator.hasNext()) {
                 var renderSectionId = renderSectionIterator.nextByteAsInt();
-                var renderSection = renderRegion.getSection(renderSectionId);
-
-                var blockEntities = renderSection.getCulledBlockEntities();
+                var blockEntities = renderRegion.getCulledBlockEntities(renderSectionId);
 
                 if (blockEntities == null) {
                     continue;
@@ -460,7 +457,7 @@ public class SodiumWorldRenderer {
         }
 
         for (var renderSection : this.renderSectionManager.getSectionsWithGlobalEntities()) {
-            var blockEntities = renderSection.getGlobalBlockEntities();
+            var blockEntities = renderSection.getRegion().getGlobalBlockEntities(renderSection.getSectionIndex());
 
             if (blockEntities == null) {
                 continue;

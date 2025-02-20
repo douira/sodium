@@ -1,28 +1,35 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.lists;
 
-import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
-import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
+import net.caffeinemc.mods.sodium.client.render.chunk.LocalSectionIndex;
 import net.caffeinemc.mods.sodium.client.render.chunk.TaskQueueType;
-import net.minecraft.core.SectionPos;
+import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
+import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegionManager;
 
 /**
  * Collects sections from a tree traversal. It needs to turn coordinates into section objects because the section collector is not capable of handling raw section indexes yet.
  */
 public class TreeSectionCollector extends SectionCollector implements CoordinateSectionVisitor {
-    private final Long2ReferenceMap<RenderSection> sections;
+    private final RenderRegionManager regions;
 
-    public TreeSectionCollector(int frame, TaskQueueType importantRebuildQueueType, Long2ReferenceMap<RenderSection> sections) {
+    public TreeSectionCollector(int frame, TaskQueueType importantRebuildQueueType, RenderRegionManager regions) {
         super(frame, importantRebuildQueueType);
-        this.sections = sections;
+        this.regions = regions;
     }
 
     @Override
     public void visit(int x, int y, int z) {
-        var section = this.sections.get(SectionPos.asLong(x, y, z));
+        var region = this.regions.getForChunk(x, y, z);
 
-        if (section != null) {
-            this.visit(section);
+        if (region == null) {
+            return;
         }
+
+        int rX = x & (RenderRegion.REGION_WIDTH - 1);
+        int rY = y & (RenderRegion.REGION_HEIGHT - 1);
+        int rZ = z & (RenderRegion.REGION_LENGTH - 1);
+        var sectionIndex = LocalSectionIndex.pack(rX, rY, rZ);
+
+        this.visit(region, sectionIndex, x, y, z);
     }
 
     @Override

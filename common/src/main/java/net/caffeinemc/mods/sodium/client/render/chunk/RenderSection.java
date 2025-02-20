@@ -8,10 +8,8 @@ import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.VisibilityEncodi
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.TranslucentData;
 import net.caffeinemc.mods.sodium.client.util.task.CancellationToken;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,22 +40,12 @@ public class RenderSection {
             adjacentWest,
             adjacentEast;
 
-
     // Rendering State
-    private boolean built = false; // merge with the flags?
-    private int flags = RenderSectionFlags.NONE;
-    private BlockEntity @Nullable[] globalBlockEntities;
-    private BlockEntity @Nullable[] culledBlockEntities;
-    private TextureAtlasSprite @Nullable[] animatedSprites;
     @Nullable
     private TranslucentData translucentData;
 
     // Pending Update State
-    @Nullable
-    private CancellationToken taskCancellationToken = null;
     private long lastMeshResultSize = MeshResultSize.NO_DATA;
-
-    private int pendingUpdateType;
     private long pendingUpdateSince;
 
     private int lastUploadFrame = -1;
@@ -132,10 +120,7 @@ public class RenderSection {
      * be used.
      */
     public void delete() {
-        if (this.taskCancellationToken != null) {
-            this.taskCancellationToken.setCancelled();
-            this.taskCancellationToken = null;
-        }
+        this.region.cancelSectionTask(this.sectionIndex);
 
         this.clearRenderState();
         this.disposed = true;
@@ -150,32 +135,22 @@ public class RenderSection {
     }
 
     private boolean setRenderState(@NotNull BuiltSectionInfo info) {
-        var prevBuilt = this.built;
-        var prevFlags = this.flags;
+        var prevFlags = this.region.getSectionFlags(this.sectionIndex);
         var prevVisibilityData = this.visibilityData;
 
-        this.built = true;
-        this.flags = info.flags;
+        this.region.setSectionRenderState(this.sectionIndex, info);
         this.visibilityData = info.visibilityData;
-
-        this.globalBlockEntities = info.globalBlockEntities;
-        this.culledBlockEntities = info.culledBlockEntities;
-        this.animatedSprites = info.animatedSprites;
 
         // the section is marked as having received graph-relevant changes if it's build state, flags, or connectedness has changed.
         // the entities and sprites don't need to be checked since whether they exist is encoded in the flags.
-        return !prevBuilt || prevFlags != this.flags || prevVisibilityData != this.visibilityData;
+        return prevFlags != this.region.getSectionFlags(this.sectionIndex) || prevVisibilityData != this.visibilityData;
     }
 
     private boolean clearRenderState() {
-        var wasBuilt = this.built;
+        var wasBuilt = this.isBuilt();
 
-        this.built = false;
-        this.flags = RenderSectionFlags.NONE;
+        this.region.clearSectionRenderState(this.sectionIndex);
         this.visibilityData = VisibilityEncoding.NULL;
-        this.globalBlockEntities = null;
-        this.culledBlockEntities = null;
-        this.animatedSprites = null;
 
         // changes to data if it moves from built to not built don't matter, so only build state changes matter
         return wasBuilt;
@@ -282,7 +257,7 @@ public class RenderSection {
     }
 
     public boolean isBuilt() {
-        return this.built;
+        return (this.region.getSectionFlags(this.sectionIndex) & RenderSectionFlags.MASK_IS_BUILT) != 0;
     }
 
     public int getSectionIndex() {
@@ -314,51 +289,22 @@ public class RenderSection {
     }
 
     /**
-     * Returns a bitfield containing the {@link RenderSectionFlags} for this built section.
-     */
-    public int getFlags() {
-        return this.flags;
-    }
-
-    /**
      * Returns the occlusion culling data which determines this chunk's connectedness on the visibility graph.
      */
     public long getVisibilityData() {
         return this.visibilityData;
     }
 
-    /**
-     * Returns the collection of animated sprites contained by this rendered chunk section.
-     */
-    public TextureAtlasSprite @Nullable[] getAnimatedSprites() {
-        return this.animatedSprites;
-    }
-
-    /**
-     * Returns the collection of block entities contained by this rendered chunk.
-     */
-    public BlockEntity @Nullable[] getCulledBlockEntities() {
-        return this.culledBlockEntities;
-    }
-
-    /**
-     * Returns the collection of block entities contained by this rendered chunk, which are not part of its culling
-     * volume. These entities should always be rendered regardless of the render being visible in the frustum.
-     */
-    public BlockEntity @Nullable[] getGlobalBlockEntities() {
-        return this.globalBlockEntities;
-    }
-
     public @Nullable CancellationToken getTaskCancellationToken() {
-        return this.taskCancellationToken;
+        return this.region.getSectionTaskCancellationToken(this.sectionIndex);
     }
 
     public void setTaskCancellationToken(@Nullable CancellationToken token) {
-        this.taskCancellationToken = token;
+        this.region.setSectionTaskCancellationToken(this.sectionIndex, token);
     }
 
     public int getPendingUpdate() {
-        return this.pendingUpdateType;
+        return this.region.getSectionPendingUpdate(this.sectionIndex);
     }
 
     public long getPendingUpdateSince() {
@@ -366,12 +312,12 @@ public class RenderSection {
     }
 
     public void setPendingUpdate(int type, long now) {
-        this.pendingUpdateType = type;
+        this.region.setSectionPendingUpdate(this.sectionIndex, type);
         this.pendingUpdateSince = now;
     }
 
     public void clearPendingUpdate() {
-        this.pendingUpdateType = 0;
+        this.region.setSectionPendingUpdate(this.sectionIndex, 0);
     }
 
     public void prepareTrigger(boolean isDirectTrigger) {
