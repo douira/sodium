@@ -1,6 +1,7 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.lists;
 
 import it.unimi.dsi.fastutil.ints.IntArrays;
+import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkUpdateType;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
@@ -13,7 +14,7 @@ import java.util.Map;
 public interface RenderListProvider extends SortItemsProvider {
     ObjectArrayList<ChunkRenderList> getUnsortedRenderLists();
 
-    Map<ChunkUpdateType, ArrayDeque<RenderSection>> getTaskLists();
+    Map<ChunkUpdateType, LongArrayFIFOQueue> getTaskLists();
 
     boolean orderIsSorted();
 

@@ -1,7 +1,6 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.lists;
 
 import net.caffeinemc.mods.sodium.client.render.chunk.LocalSectionIndex;
-import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionFlags;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.util.iterator.ByteArrayIterator;
@@ -126,28 +125,27 @@ public class ChunkRenderList {
         }
     }
 
-    public void add(RenderSection render) {
+    public void add(int localSectionIndex) {
         if (this.size >= RenderRegion.REGION_SIZE) {
             throw new ArrayIndexOutOfBoundsException("Render list is full");
         }
 
         this.size++;
 
-        int index = render.getSectionIndex();
-        int flags = render.getFlags();
+        int flags = this.region.getSectionFlags(localSectionIndex);
 
         if (((flags >>> RenderSectionFlags.HAS_BLOCK_GEOMETRY) & 1) == 1) {
-            this.sectionsWithGeometryMap[index >> 6] |= 1L << (index & 0b111111);
+            this.sectionsWithGeometryMap[localSectionIndex >> 6] |= 1L << (localSectionIndex & 0b111111);
             if (this.addedSectionsAreSorted) {
-                this.sectionsWithGeometry[this.sectionsWithGeometryCount] = (byte) index;
+                this.sectionsWithGeometry[this.sectionsWithGeometryCount] = (byte) localSectionIndex;
             }
             this.sectionsWithGeometryCount++;
         }
 
-        this.sectionsWithSprites[this.sectionsWithSpritesCount] = (byte) index;
+        this.sectionsWithSprites[this.sectionsWithSpritesCount] = (byte) localSectionIndex;
         this.sectionsWithSpritesCount += (flags >>> RenderSectionFlags.HAS_ANIMATED_SPRITES) & 1;
 
-        this.sectionsWithEntities[this.sectionsWithEntitiesCount] = (byte) index;
+        this.sectionsWithEntities[this.sectionsWithEntitiesCount] = (byte) localSectionIndex;
         this.sectionsWithEntitiesCount += (flags >>> RenderSectionFlags.HAS_BLOCK_ENTITIES) & 1;
     }
 

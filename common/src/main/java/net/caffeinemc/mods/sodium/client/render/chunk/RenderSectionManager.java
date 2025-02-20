@@ -3,6 +3,7 @@ package net.caffeinemc.mods.sodium.client.render.chunk;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMaps;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceSet;
@@ -89,7 +90,7 @@ public class RenderSectionManager {
     private SortedRenderLists renderLists;
 
     @NotNull
-    private Map<ChunkUpdateType, ArrayDeque<RenderSection>> taskLists;
+    private Map<ChunkUpdateType, LongArrayFIFOQueue> taskLists;
 
     private int lastUpdatedFrame;
 
@@ -122,7 +123,7 @@ public class RenderSectionManager {
         this.taskLists = new EnumMap<>(ChunkUpdateType.class);
 
         for (var type : ChunkUpdateType.values()) {
-            this.taskLists.put(type, new ArrayDeque<>());
+            this.taskLists.put(type, new LongArrayFIFOQueue());
         }
     }
 
@@ -147,7 +148,7 @@ public class RenderSectionManager {
 
         RenderListProvider renderListProvider;
         if (this.isOutOfGraph(viewport.getChunkCoord())) {
-            var visitor = new TreeSectionCollector(frame, this.sectionByPosition);
+            var visitor = new TreeSectionCollector(frame, this.regions);
             this.renderableSectionTree.prepareForTraversal();
             this.renderableSectionTree.traverse(visitor, viewport, searchDistance);
 
@@ -287,13 +288,7 @@ public class RenderSectionManager {
             }
 
             while (iterator.hasNext()) {
-                var section = region.getSection(iterator.nextByteAsInt());
-
-                if (section == null) {
-                    continue;
-                }
-
-                var sprites = section.getAnimatedSprites();
+                var sprites = region.getAnimatedSprites(iterator.nextByteAsInt());
 
                 if (sprites == null) {
                     continue;
@@ -480,9 +475,10 @@ public class RenderSectionManager {
         var queue = this.taskLists.get(type);
 
         while (!queue.isEmpty() && collector.hasBudgetFor(type.getTaskEffort(), ignoreEffortCategory)) {
-            RenderSection section = queue.remove();
+            var sectionPos = queue.dequeueLong();
+            var section = this.sectionByPosition.get(sectionPos);
 
-            if (section.isDisposed()) {
+            if (section == null || section.isDisposed()) {
                 continue;
             }
 
