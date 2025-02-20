@@ -191,14 +191,14 @@ public class SodiumWorldRenderer {
         float fogDistance = RenderSystem.getShaderFog().end();
 
         if (this.lastCameraPos == null) {
-            this.lastCameraPos = new Vector3d(pos);
+            this.lastCameraPos = pos;
         }
         if (this.lastProjectionMatrix == null) {
             this.lastProjectionMatrix = new Matrix4f(projectionMatrix);
         }
         boolean cameraLocationChanged = !pos.equals(this.lastCameraPos);
         boolean cameraAngleChanged = pitch != this.lastCameraPitch || yaw != this.lastCameraYaw || fogDistance != this.lastFogDistance;
-        boolean cameraProjectionChanged = !projectionMatrix.equals(this.lastProjectionMatrix);
+        boolean cameraProjectionChanged = !projectionMatrix.equals(this.lastProjectionMatrix, 0.0001f);
 
         this.lastProjectionMatrix = projectionMatrix;
 
@@ -211,13 +211,13 @@ public class SodiumWorldRenderer {
 
         this.lastFogDistance = fogDistance;
 
-        this.renderSectionManager.updateCameraState(pos, camera);
+        this.renderSectionManager.prepareFrame(pos);
 
         if (cameraLocationChanged) {
             profiler.popPush("translucent_triggering");
 
             this.renderSectionManager.processGFNIMovement(new CameraMovement(this.lastCameraPos, pos));
-            this.lastCameraPos = new Vector3d(pos);
+            this.lastCameraPos = pos;
         }
 
         int maxChunkUpdates = updateChunksImmediately ? this.renderDistance : 1;
