@@ -1,7 +1,7 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.tree;
 
-import net.caffeinemc.mods.sodium.client.render.chunk.lists.CoordinateSectionVisitor;
 import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.OcclusionCuller;
+import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.TaskSectionTree;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import org.joml.FrustumIntersection;
 
@@ -18,7 +18,7 @@ public class TraversableTree extends Tree {
 
     // set temporarily during traversal
     private int cameraOffsetX, cameraOffsetY, cameraOffsetZ;
-    private CoordinateSectionVisitor visitor;
+    private TaskSectionTree.VisibleSectionVisitor visitor;
     protected Viewport viewport;
     private float distanceLimit;
 
@@ -59,7 +59,7 @@ public class TraversableTree extends Tree {
         return (this.tree[reducedBitIndex] & (1L << (bitIndex & 0b111111))) != 0 ? PRESENT : NOT_PRESENT;
     }
 
-    public void traverse(CoordinateSectionVisitor visitor, Viewport viewport, float distanceLimit, float buildDistance) {
+    public void traverse(TaskSectionTree.VisibleSectionVisitor visitor, Viewport viewport, float distanceLimit, float buildDistance) {
         this.visitor = visitor;
         this.viewport = viewport;
         this.distanceLimit = distanceLimit;

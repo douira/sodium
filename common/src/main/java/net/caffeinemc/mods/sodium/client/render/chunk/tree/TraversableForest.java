@@ -1,13 +1,13 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.tree;
 
-import net.caffeinemc.mods.sodium.client.render.chunk.lists.CoordinateSectionVisitor;
+import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.TaskSectionTree;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import net.minecraft.world.level.Level;
 
 public interface TraversableForest extends Forest {
     void prepareForTraversal();
 
-    void traverse(CoordinateSectionVisitor visitor, Viewport viewport, float distanceLimit);
+    void traverse(TaskSectionTree.VisibleSectionVisitor visitor, Viewport viewport, float distanceLimit);
 
     static TraversableForest createTraversableForest(int baseOffsetX, int baseOffsetY, int baseOffsetZ, float buildDistance, Level level) {
         if (BaseBiForest.checkApplicable(buildDistance, level)) {

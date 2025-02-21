@@ -3,7 +3,7 @@ package net.caffeinemc.mods.sodium.client.render.chunk.tree;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
-import net.caffeinemc.mods.sodium.client.render.chunk.lists.CoordinateSectionVisitor;
+import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.TaskSectionTree;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import net.minecraft.core.SectionPos;
 
@@ -52,7 +52,7 @@ public class RemovableMultiForest implements RemovableForest {
     }
 
     @Override
-    public void traverse(CoordinateSectionVisitor visitor, Viewport viewport, float distanceLimit) {
+    public void traverse(TaskSectionTree.VisibleSectionVisitor visitor, Viewport viewport, float distanceLimit) {
         var transform = viewport.getTransform();
         var cameraSectionX = transform.intX >> 4;
         var cameraSectionY = transform.intY >> 4;

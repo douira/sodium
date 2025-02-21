@@ -17,7 +17,6 @@ import net.caffeinemc.mods.sodium.client.render.chunk.terrain.DefaultTerrainRend
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkMeshFormats;
 import net.caffeinemc.mods.sodium.client.util.MathUtil;
-import net.caffeinemc.mods.sodium.client.util.task.CancellationToken;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -59,8 +58,6 @@ public class RenderRegion {
 
     private final RenderSection[] sections = new RenderSection[RenderRegion.REGION_SIZE];
     private final byte[] sectionFlags = new byte[RenderRegion.REGION_SIZE];
-    private final CancellationToken[] taskCancellationTokens = new CancellationToken[RenderRegion.REGION_SIZE];
-    private final int[] sectionPendingUpdates = new int[RenderRegion.REGION_SIZE];
     private final BlockEntity[] @Nullable [] globalBlockEntities = new BlockEntity[RenderRegion.REGION_SIZE][];
     private final BlockEntity[] @Nullable [] culledBlockEntities = new BlockEntity[RenderRegion.REGION_SIZE][];
     private final TextureAtlasSprite[] @Nullable [] animatedSprites = new TextureAtlasSprite[RenderRegion.REGION_SIZE][];
@@ -265,30 +262,6 @@ public class RenderRegion {
      */
     public TextureAtlasSprite[] getAnimatedSprites(int id) {
         return this.animatedSprites[id];
-    }
-
-    public void setSectionPendingUpdate(int id, int type) {
-        this.sectionPendingUpdates[id] = type;
-    }
-
-    public int getSectionPendingUpdate(int id) {
-        return this.sectionPendingUpdates[id];
-    }
-
-    public void setSectionTaskCancellationToken(int id, CancellationToken token) {
-        this.taskCancellationTokens[id] = token;
-    }
-
-    public void cancelSectionTask(int id) {
-        var token = this.taskCancellationTokens[id];
-        if (token != null) {
-            token.setCancelled();
-            this.taskCancellationTokens[id] = null;
-        }
-    }
-
-    public CancellationToken getSectionTaskCancellationToken(int id) {
-        return this.taskCancellationTokens[id];
     }
 
     public void removeSection(RenderSection section) {

@@ -8,7 +8,6 @@ import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.VisibilityEncodi
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.TranslucentData;
 import net.caffeinemc.mods.sodium.client.util.task.CancellationToken;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -30,6 +29,8 @@ public class RenderSection {
 
     private int incomingDirections;
     private int lastVisibleFrame = -1;
+    private int globalCullIncomingDirections;
+    private int globalCullLastVisibleFrame = -1;
 
     private int adjacentMask;
     public RenderSection
@@ -45,7 +46,11 @@ public class RenderSection {
     private TranslucentData translucentData;
 
     // Pending Update State
+    @Nullable
+    private CancellationToken taskCancellationToken = null;
     private long lastMeshResultSize = MeshResultSize.NO_DATA;
+
+    private int pendingUpdateType;
     private long pendingUpdateSince;
 
     private int lastUploadFrame = -1;
@@ -62,7 +67,6 @@ public class RenderSection {
         int rX = this.getChunkX() & RenderRegion.REGION_WIDTH_M;
         int rY = this.getChunkY() & RenderRegion.REGION_HEIGHT_M;
         int rZ = this.getChunkZ() & RenderRegion.REGION_LENGTH_M;
-
         this.sectionIndex = LocalSectionIndex.pack(rX, rY, rZ);
 
         this.region = region;
@@ -120,7 +124,10 @@ public class RenderSection {
      * be used.
      */
     public void delete() {
-        this.region.cancelSectionTask(this.sectionIndex);
+        if (this.taskCancellationToken != null) {
+            this.taskCancellationToken.setCancelled();
+            this.taskCancellationToken = null;
+        }
 
         this.clearRenderState();
         this.disposed = true;
@@ -190,14 +197,6 @@ public class RenderSection {
      */
     public int getOriginZ() {
         return this.chunkZ << 4;
-    }
-
-    /**
-     * @return The squared distance from the center of this chunk in the level to the center of the block position
-     * given by {@param pos}
-     */
-    public float getSquaredDistance(BlockPos pos) {
-        return this.getSquaredDistance(pos.getX() + 0.5f, pos.getY() + 0.5f, pos.getZ() + 0.5f);
     }
 
     /**
@@ -288,6 +287,26 @@ public class RenderSection {
         this.incomingDirections = directions;
     }
 
+    public void setGlobalCullLastVisibleFrame(int frame) {
+        this.globalCullLastVisibleFrame = frame;
+    }
+
+    public int getGlobalCullLastVisibleFrame() {
+        return this.globalCullLastVisibleFrame;
+    }
+
+    public int getGlobalCullIncomingDirections() {
+        return this.globalCullIncomingDirections;
+    }
+
+    public void addGlobalCullIncomingDirections(int directions) {
+        this.globalCullIncomingDirections |= directions;
+    }
+
+    public void setGlobalCullIncomingDirections(int directions) {
+        this.globalCullIncomingDirections = directions;
+    }
+
     /**
      * Returns the occlusion culling data which determines this chunk's connectedness on the visibility graph.
      */
@@ -296,15 +315,15 @@ public class RenderSection {
     }
 
     public @Nullable CancellationToken getTaskCancellationToken() {
-        return this.region.getSectionTaskCancellationToken(this.sectionIndex);
+        return this.taskCancellationToken;
     }
 
     public void setTaskCancellationToken(@Nullable CancellationToken token) {
-        this.region.setSectionTaskCancellationToken(this.sectionIndex, token);
+        this.taskCancellationToken = token;
     }
 
     public int getPendingUpdate() {
-        return this.region.getSectionPendingUpdate(this.sectionIndex);
+        return this.pendingUpdateType;
     }
 
     public long getPendingUpdateSince() {
@@ -312,12 +331,12 @@ public class RenderSection {
     }
 
     public void setPendingUpdate(int type, long now) {
-        this.region.setSectionPendingUpdate(this.sectionIndex, type);
+        this.pendingUpdateType = type;
         this.pendingUpdateSince = now;
     }
 
     public void clearPendingUpdate() {
-        this.region.setSectionPendingUpdate(this.sectionIndex, 0);
+        this.pendingUpdateType = 0;
     }
 
     public void prepareTrigger(boolean isDirectTrigger) {

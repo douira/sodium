@@ -1,18 +1,18 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.lists;
 
 import net.caffeinemc.mods.sodium.client.render.chunk.LocalSectionIndex;
-import net.caffeinemc.mods.sodium.client.render.chunk.TaskQueueType;
+import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.TaskSectionTree;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegionManager;
 
 /**
  * Collects sections from a tree traversal. It needs to turn coordinates into section objects because the section collector is not capable of handling raw section indexes yet.
  */
-public class TreeSectionCollector extends SectionCollector implements CoordinateSectionVisitor {
+public class TreeSectionCollector extends SectionCollector implements TaskSectionTree.VisibleSectionVisitor {
     private final RenderRegionManager regions;
 
-    public TreeSectionCollector(int frame, TaskQueueType importantRebuildQueueType, RenderRegionManager regions) {
-        super(frame, importantRebuildQueueType);
+    public TreeSectionCollector(int frame, RenderRegionManager regions) {
+        super(frame);
         this.regions = regions;
     }
 
@@ -29,7 +29,7 @@ public class TreeSectionCollector extends SectionCollector implements Coordinate
         int rZ = z & (RenderRegion.REGION_LENGTH - 1);
         var sectionIndex = LocalSectionIndex.pack(rX, rY, rZ);
 
-        this.visit(region, sectionIndex, x, y, z);
+        this.visit(region, sectionIndex);
     }
 
     @Override

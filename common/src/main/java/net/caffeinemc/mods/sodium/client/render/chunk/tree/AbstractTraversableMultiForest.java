@@ -1,7 +1,7 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.tree;
 
 import it.unimi.dsi.fastutil.ints.IntArrays;
-import net.caffeinemc.mods.sodium.client.render.chunk.lists.CoordinateSectionVisitor;
+import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.TaskSectionTree;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 
 public abstract class AbstractTraversableMultiForest<T extends TraversableTree> extends BaseMultiForest<T> implements TraversableForest {
@@ -19,7 +19,7 @@ public abstract class AbstractTraversableMultiForest<T extends TraversableTree> 
     }
 
     @Override
-    public void traverse(CoordinateSectionVisitor visitor, Viewport viewport, float distanceLimit) {
+    public void traverse(TaskSectionTree.VisibleSectionVisitor visitor, Viewport viewport, float distanceLimit) {
         var cameraPos = viewport.getChunkCoord();
         var cameraSectionX = cameraPos.getX();
         var cameraSectionY = cameraPos.getY();

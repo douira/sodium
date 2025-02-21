@@ -1,6 +1,6 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.tree;
 
-import net.caffeinemc.mods.sodium.client.render.chunk.lists.CoordinateSectionVisitor;
+import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.TaskSectionTree;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 
 public abstract class AbstractTraversableBiForest<T extends TraversableTree> extends BaseBiForest<T> implements TraversableForest {
@@ -17,7 +17,7 @@ public abstract class AbstractTraversableBiForest<T extends TraversableTree> ext
     }
 
     @Override
-    public void traverse(CoordinateSectionVisitor visitor, Viewport viewport, float distanceLimit) {
+    public void traverse(TaskSectionTree.VisibleSectionVisitor visitor, Viewport viewport, float distanceLimit) {
         // no sorting is necessary because we assume the camera will never be closer to the secondary tree than the main tree
         this.mainTree.traverse(visitor, viewport, distanceLimit, this.buildDistance);
         if (this.secondaryTree != null) {
