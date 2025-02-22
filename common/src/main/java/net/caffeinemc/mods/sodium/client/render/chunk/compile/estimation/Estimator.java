@@ -5,46 +5,46 @@ import java.util.Map;
 /**
  * This generic model learning class that can be used to estimate values based on a set of data points. It performs batch-wise model updates. The actual data aggregation and model updates are delegated to the implementing classes. The estimator stores multiple models in a map, one for each category.
  *
- * @param <Category> The type of the category key
- * @param <Point> A data point contains a category and one piece of data
- * @param <Batch> A data batch contains multiple data points
- * @param <Input> The input to the model
- * @param <Output> The output of the model
- * @param <Model> The model that is used to predict values
+ * @param <TCategory> The type of the category key
+ * @param <TPoint> A data point contains a category and one piece of data
+ * @param <TBatch> A data batch contains multiple data points
+ * @param <TInput> The input to the model
+ * @param <TOutput> The output of the model
+ * @param <TModel> The model that is used to predict values
  */
 public abstract class Estimator<
-        Category,
-        Point extends Estimator.DataPoint<Category>,
-        Batch extends Estimator.DataBatch<Point>,
-        Input,
-        Output,
-        Model extends Estimator.Model<Input, Output, Batch, Model>> {
-    protected final Map<Category, Model> models = createMap();
-    protected final Map<Category, Batch> batches = createMap();
+        TCategory,
+        TPoint extends Estimator.DataPoint<TCategory>,
+        TBatch extends Estimator.DataBatch<TPoint>,
+        TInput,
+        TOutput,
+        TModel extends Estimator.Model<TInput, TOutput, TBatch, TModel>> {
+    protected final Map<TCategory, TModel> models = createMap();
+    protected final Map<TCategory, TBatch> batches = createMap();
 
-    protected interface DataBatch<BatchPoint> {
-        void addDataPoint(BatchPoint input);
+    protected interface DataBatch<TBatchPoint> {
+        void addDataPoint(TBatchPoint input);
 
         void reset();
     }
 
-    protected interface DataPoint<PointCategory> {
-        PointCategory category();
+    protected interface DataPoint<TPointCategory> {
+        TPointCategory category();
     }
 
-    protected interface Model<ModelInput, ModelOutput, ModelBatch, ModelSelf extends Model<ModelInput, ModelOutput, ModelBatch, ModelSelf>> {
-        ModelSelf update(ModelBatch batch);
+    protected interface Model<TModelInput, TModelOutput, TModelBatch, TModelSelf extends Model<TModelInput, TModelOutput, TModelBatch, TModelSelf>> {
+        TModelSelf update(TModelBatch batch);
 
-        ModelOutput predict(ModelInput input);
+        TModelOutput predict(TModelInput input);
     }
 
-    protected abstract Batch createNewDataBatch();
+    protected abstract TBatch createNewDataBatch();
 
-    protected abstract Model createNewModel();
+    protected abstract TModel createNewModel();
 
-    protected abstract <T> Map<Category, T> createMap();
+    protected abstract <T> Map<TCategory, T> createMap();
 
-    public void addData(Point data) {
+    public void addData(TPoint data) {
         var category = data.category();
         var batch = this.batches.get(category);
         if (batch == null) {
@@ -54,7 +54,7 @@ public abstract class Estimator<
         batch.addDataPoint(data);
     }
 
-    private Model ensureModel(Category category) {
+    private TModel ensureModel(TCategory category) {
         var model = this.models.get(category);
         if (model == null) {
             model = this.createNewModel();
@@ -77,11 +77,11 @@ public abstract class Estimator<
         });
     }
 
-    public Output predict(Category category, Input input) {
-        return (Output) this.ensureModel(category).predict(input);
+    public TOutput predict(TCategory category, TInput input) {
+        return this.ensureModel(category).predict(input);
     }
 
-    public String toString(Category category) {
+    public String toString(TCategory category) {
         var model = this.models.get(category);
         if (model == null) {
             return "-";

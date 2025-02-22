@@ -4,7 +4,7 @@ import net.caffeinemc.mods.sodium.client.util.MathUtil;
 
 import java.util.Locale;
 
-public abstract class Average1DEstimator<Category> extends Estimator<Category, Average1DEstimator.Value<Category>, Average1DEstimator.ValueBatch<Category>, Void, Long, Average1DEstimator.Average<Category>> {
+public abstract class Average1DEstimator<C> extends Estimator<C, Average1DEstimator.Value<C>, Average1DEstimator.ValueBatch<C>, Void, Long, Average1DEstimator.Average<C>> {
     private final float newDataRatio;
     private final long initialEstimate;
 
@@ -39,11 +39,11 @@ public abstract class Average1DEstimator<Category> extends Estimator<Category, A
     }
 
     @Override
-    protected ValueBatch<Category> createNewDataBatch() {
+    protected ValueBatch<C> createNewDataBatch() {
         return new ValueBatch<>();
     }
 
-    protected static class Average<ModelCategory> implements Estimator.Model<Void, Long, ValueBatch<ModelCategory>, Average<ModelCategory>> {
+    protected static class Average<C> implements Estimator.Model<Void, Long, ValueBatch<C>, Average<C>> {
         private final float newDataRatio;
         private boolean hasRealData = false;
         private float average;
@@ -54,7 +54,7 @@ public abstract class Average1DEstimator<Category> extends Estimator<Category, A
         }
 
         @Override
-        public Average<ModelCategory> update(ValueBatch<ModelCategory> batch) {
+        public Average<C> update(ValueBatch<C> batch) {
             if (batch.count > 0) {
                 if (this.hasRealData) {
                     this.average = MathUtil.exponentialMovingAverage(this.average, batch.getAverage(), this.newDataRatio);
@@ -79,11 +79,11 @@ public abstract class Average1DEstimator<Category> extends Estimator<Category, A
     }
 
     @Override
-    protected Average<Category> createNewModel() {
+    protected Average<C> createNewModel() {
         return new Average<>(this.newDataRatio, this.initialEstimate);
     }
 
-    public Long predict(Category category) {
+    public Long predict(C category) {
         return super.predict(category, null);
     }
 }
