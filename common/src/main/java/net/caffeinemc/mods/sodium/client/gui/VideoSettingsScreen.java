@@ -59,6 +59,7 @@ public class VideoSettingsScreen extends Screen implements ScreenPromptable {
     private DonationButtonWidget donateButton;
 
     private boolean hasPendingChanges;
+    private boolean reserveBottomSpace;
 
     private final ScrollableTooltip tooltip = new ScrollableTooltip(this);
 
@@ -190,15 +191,34 @@ public class VideoSettingsScreen extends Screen implements ScreenPromptable {
 
         this.pageList = new PageListWidget(this, this::startSearch, new Dim2i(0, 0, Layout.PAGE_LIST_WIDTH, this.height));
 
-        this.applyButton = new FlatButtonWidget(new Dim2i(Layout.PAGE_LIST_WIDTH + Layout.INNER_MARGIN, Layout.INNER_MARGIN, Layout.BUTTON_LONG, Layout.BUTTON_SHORT), Component.translatable("sodium.options.buttons.apply"), ConfigManager.CONFIG::applyAllOptions, true, false);
-        this.closeButton = new FlatButtonWidget(new Dim2i(this.applyButton.getLimitX() + Layout.INNER_MARGIN, Layout.INNER_MARGIN, Layout.BUTTON_LONG, Layout.BUTTON_SHORT), Component.translatable("gui.done"), this::onClose, true, false);
-        this.undoButton = new FlatButtonWidget(new Dim2i(this.closeButton.getLimitX() + Layout.INNER_MARGIN, Layout.INNER_MARGIN, Layout.BUTTON_LONG, Layout.BUTTON_SHORT), Component.translatable("sodium.options.buttons.undo"), this::undoChanges, true, false);
+        boolean stackVertically = false;
+        this.reserveBottomSpace = false;
 
-        this.donateButton = new DonationButtonWidget(this, List.of(this.applyButton, this.closeButton, this.undoButton), this.width, this::openDonationPage);
+        int minWidthToStack = Layout.PAGE_LIST_WIDTH + Layout.INNER_MARGIN * 2 + Layout.OPTION_WIDTH + Layout.OPTION_LIST_SCROLLBAR_OFFSET + Layout.SCROLLBAR_WIDTH + Layout.BUTTON_LONG;
+        int maxWidthToStack = minWidthToStack + Layout.BUTTON_LONG * 2 + Layout.INNER_MARGIN;
+
+        if (this.width > minWidthToStack && this.width < maxWidthToStack) {
+            stackVertically = true;
+        } else if (this.width < minWidthToStack) {
+            this.reserveBottomSpace = true;
+        }
+
+        this.closeButton = new FlatButtonWidget(new Dim2i(this.width - Layout.BUTTON_LONG - Layout.INNER_MARGIN, this.height - (Layout.INNER_MARGIN + Layout.BUTTON_SHORT), Layout.BUTTON_LONG, Layout.BUTTON_SHORT), Component.translatable("gui.done"), this::onClose, true, false);
+
+        if (stackVertically) {
+            this.applyButton = new FlatButtonWidget(new Dim2i(this.closeButton.getX(), this.closeButton.getY() - (Layout.INNER_MARGIN + Layout.BUTTON_SHORT), Layout.BUTTON_LONG, Layout.BUTTON_SHORT), Component.translatable("sodium.options.buttons.apply"), ConfigManager.CONFIG::applyAllOptions, true, false);
+            this.undoButton = new FlatButtonWidget(new Dim2i(this.applyButton.getX(), this.applyButton.getY() - (Layout.INNER_MARGIN + Layout.BUTTON_SHORT), Layout.BUTTON_LONG, Layout.BUTTON_SHORT), Component.translatable("sodium.options.buttons.undo"), this::undoChanges, true, false);
+        } else {
+            this.applyButton = new FlatButtonWidget(new Dim2i(this.closeButton.getX() - Layout.INNER_MARGIN - Layout.BUTTON_LONG, this.height - (Layout.INNER_MARGIN + Layout.BUTTON_SHORT), Layout.BUTTON_LONG, Layout.BUTTON_SHORT), Component.translatable("sodium.options.buttons.apply"), ConfigManager.CONFIG::applyAllOptions, true, false);
+            this.undoButton = new FlatButtonWidget(new Dim2i(this.applyButton.getX() - Layout.INNER_MARGIN - Layout.BUTTON_LONG, this.height - (Layout.INNER_MARGIN + Layout.BUTTON_SHORT), Layout.BUTTON_LONG, Layout.BUTTON_SHORT), Component.translatable("sodium.options.buttons.undo"), this::undoChanges, true, false);
+        }
+
+        this.donateButton = new DonationButtonWidget(this, List.of(), this.width, this::openDonationPage);
+
+        this.addRenderableWidget(this.pageList);
 
         this.rebuildOptionList();
 
-        this.addRenderableWidget(this.pageList);
         this.addRenderableWidget(this.undoButton);
         this.addRenderableWidget(this.applyButton);
         this.addRenderableWidget(this.closeButton);
@@ -211,8 +231,8 @@ public class VideoSettingsScreen extends Screen implements ScreenPromptable {
     private void rebuildOptionList() {
         this.removeWidget(this.optionList);
         this.optionList = this.addRenderableWidget(new OptionListWidget(this, new Dim2i(
-                this.pageList.getLimitX() + Layout.INNER_MARGIN, Layout.INNER_MARGIN * 2 + Layout.BUTTON_SHORT,
-                Layout.OPTION_WIDTH + Layout.OPTION_LIST_SCROLLBAR_OFFSET + Layout.SCROLLBAR_WIDTH, this.height - (Layout.INNER_MARGIN * 3 + Layout.BUTTON_SHORT)),
+                this.pageList.getLimitX() + Layout.INNER_MARGIN, Layout.INNER_MARGIN,
+                Layout.OPTION_WIDTH + Layout.OPTION_LIST_SCROLLBAR_OFFSET + Layout.SCROLLBAR_WIDTH, this.height - (this.reserveBottomSpace ? (Layout.INNER_MARGIN * 3 + Layout.BUTTON_SHORT) : (Layout.INNER_MARGIN))),
                 this.currentPage, this.currentMod.theme()
         ));
         this.controlList = this.optionList;
@@ -249,7 +269,8 @@ public class VideoSettingsScreen extends Screen implements ScreenPromptable {
         boolean hasChanges = ConfigManager.CONFIG.anyOptionChanged();
 
         this.applyButton.setEnabled(hasChanges);
-        this.setWidgetPresence(this.undoButton, hasChanges);
+        // This breaks the navigation order and doesn't appear to do anything
+        //this.setWidgetPresence(this.undoButton, hasChanges);
         this.undoButton.setVisible(hasChanges);
         this.closeButton.setEnabled(!hasChanges);
 

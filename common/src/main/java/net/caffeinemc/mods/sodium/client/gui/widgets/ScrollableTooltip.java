@@ -145,6 +145,9 @@ public class ScrollableTooltip {
         int arrowX = this.visibleDim.x() - ARROW_WIDTH;
         int arrowY = this.hoveredElement.getCenterY() - (ARROW_HEIGHT / 2);
 
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 400.0F);
+
         // parameters are: render type, sprite, x, y, u offset, v offset, render width, render height, u size, v size, color
         graphics.blit(RenderType::guiTextured, ARROW_TEXTURE, arrowX, arrowY, ARROW_WIDTH, 0, ARROW_WIDTH, ARROW_HEIGHT, SPRITE_WIDTH, ARROW_HEIGHT, Colors.BACKGROUND_LIGHT);
         graphics.blit(RenderType::guiTextured, ARROW_TEXTURE, arrowX, arrowY, 0, 0, ARROW_WIDTH, ARROW_HEIGHT, SPRITE_WIDTH, ARROW_HEIGHT, Colors.BACKGROUND_DEFAULT);
@@ -158,12 +161,14 @@ public class ScrollableTooltip {
 
         graphics.enableScissor(this.visibleDim.x(), this.visibleDim.y(), this.visibleDim.getLimitX(), this.visibleDim.getLimitY());
         graphics.fill(this.visibleDim.x(), this.visibleDim.y(), this.visibleDim.getLimitX(), this.visibleDim.getLimitY(), Colors.BACKGROUND_LIGHT);
+        graphics.pose().translate(0.0F, 0.0F, 400.0F);
         for (int i = 0; i < this.content.size(); i++) {
             graphics.drawString(this.font, this.content.get(i),
                     this.visibleDim.x() + TEXT_HORIZONTAL_PADDING, this.visibleDim.y() + TEXT_VERTICAL_PADDING + (i * lineHeight) - scrollAmount,
                     Colors.FOREGROUND);
         }
         graphics.disableScissor();
+        graphics.pose().popPose();
     }
 
     public boolean mouseScrolled(double d, double e, double amount) {
