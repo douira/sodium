@@ -802,7 +802,10 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         var insideToOutsideY = outside.y - inside.y;
         var insideToOutsideZ = outside.z - inside.z;
 
-        if (insideToOutsideZ == 0 && insideToOutsideX == 0 && insideToOutsideY == 0) {
+        // use an epsilon in this check to prevent splitPlaneEdgeDot from being zero when a very small insideToOutside_ vanishes in the dot product
+        if (Math.abs(insideToOutsideX) < SPLIT_PLANE_EPSILON &&
+                Math.abs(insideToOutsideY) < SPLIT_PLANE_EPSILON &&
+                Math.abs(insideToOutsideZ) < SPLIT_PLANE_EPSILON) {
             copyVertexToMultiple(inside, targetA, targetB, targetC);
             return;
         }
