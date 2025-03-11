@@ -6,6 +6,7 @@ import com.mojang.blaze3d.platform.Monitor;
 import com.mojang.blaze3d.platform.VideoMode;
 import com.mojang.blaze3d.platform.Window;
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.caffeinemc.mods.sodium.client.compatibility.environment.OsUtils;
 import net.caffeinemc.mods.sodium.client.compatibility.workarounds.Workarounds;
 import net.caffeinemc.mods.sodium.client.gl.arena.staging.MappedStagingBuffer;
@@ -187,10 +188,21 @@ public class SodiumGameOptionPages {
                             if (Minecraft.useShaderTransparency()) {
                                 RenderTarget framebuffer = Minecraft.getInstance().levelRenderer.getCloudsTarget();
                                 if (framebuffer != null) {
-                                    framebuffer.clear();
+                                    RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(framebuffer.getColorTexture(), 0xFFFFFFFF, framebuffer.getDepthTexture(), 1.0f);
                                 }
                             }
                         }, opts -> opts.cloudStatus().get())
+                        .setImpact(OptionImpact.LOW)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, vanillaOpts)
+                        .setName(Component.translatable("options.renderCloudsDistance"))
+                        .setTooltip(Component.translatable("sodium.options.clouds_distance.tooltip"))
+                        .setControl(option -> new SliderControl(option, 2, 128, 2, ControlValueFormatter.translateVariable("options.chunks")))
+                        .setBinding((opts, value) -> {
+                            opts.cloudRange().set(value);
+
+                            Minecraft.getInstance().levelRenderer.getCloudRenderer().markForRebuild();
+                        }, opts -> opts.cloudRange().get())
                         .setImpact(OptionImpact.LOW)
                         .build())
                 .add(OptionImpl.createBuilder(SodiumGameOptions.WeatherQuality.class, sodiumOpts)

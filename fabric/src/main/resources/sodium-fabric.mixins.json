@@ -10,11 +10,8 @@
   },
   "client": [
     "core.model.quad.BakedQuadMixin",
-    "features.model.DelegateBakedModelMixin",
-    "features.model.MultiPartBakedModelMixin",
-    "features.model.WeightedBakedModelMixin",
-    "features.model.WeightedRandomListMixin",
     "features.render.model.block.ModelBlockRendererMixin",
-    "features.world.biome.BiomeMixin"
+    "features.world.biome.BiomeMixin",
+    "fabric.LevelSliceMixin"
   ]
 }
