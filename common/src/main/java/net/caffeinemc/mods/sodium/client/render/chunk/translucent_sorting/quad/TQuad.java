@@ -16,6 +16,14 @@ import net.caffeinemc.mods.sodium.api.util.NormI8;
  */
 public abstract class TQuad {
     /**
+     * If the delta between two vertices is smaller than this value, they are
+     * considered to be the same vertex. This is also used for checking whether a vertex
+     * lies on a splitting plane and whether the result of a splitting operation results
+     * in an empty quad.
+     */
+    public static final float VERTEX_EPSILON = 0.00001f;
+
+    /**
      * The quantization factor with which the normals are quantized such that there
      * are fewer possible unique normals. The factor describes the number of steps
      * in each direction per dimension that the components of the normals can have.
@@ -90,7 +98,9 @@ public abstract class TQuad {
             negYExtent = Math.min(negYExtent, y);
             negZExtent = Math.min(negZExtent, z);
 
-            if (x != lastX || y != lastY || z != lastZ) {
+            if (Math.abs(x - lastX) >= VERTEX_EPSILON ||
+                    Math.abs(y - lastY) >= VERTEX_EPSILON ||
+                    Math.abs(z - lastZ) >= VERTEX_EPSILON) {
                 xSum += x;
                 ySum += y;
                 zSum += z;

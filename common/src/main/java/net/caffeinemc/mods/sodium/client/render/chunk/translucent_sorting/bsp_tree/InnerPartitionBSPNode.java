@@ -56,7 +56,6 @@ import static net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.Chunk
  * reasonable and common use case (I haven't been able to determine that it is).
  */
 abstract class InnerPartitionBSPNode extends BSPNode {
-    private static final float SPLIT_PLANE_EPSILON = 0.00001f;
     private static final int NODE_REUSE_THRESHOLD = 30;
     private static final int MAX_INTERSECTION_ATTEMPTS = 500;
     protected static final int UNALIGNED_AXIS = -1;
@@ -545,7 +544,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             var vertex = vertices[i];
             var dot = splitPlane.dot(vertex.x, vertex.y, vertex.z);
             var delta = dot - splitDistance;
-            if (Math.abs(delta) < SPLIT_PLANE_EPSILON) {
+            if (Math.abs(delta) < TQuad.VERTEX_EPSILON) {
                 onPlaneMapUnmasked |= 1 << i;
             } else if (delta < 0) { // dot < splitDistance
                 insideMapUnmasked |= 1 << i;
@@ -803,9 +802,9 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         var insideToOutsideZ = outside.z - inside.z;
 
         // use an epsilon in this check to prevent splitPlaneEdgeDot from being zero when a very small insideToOutside_ vanishes in the dot product
-        if (Math.abs(insideToOutsideX) < SPLIT_PLANE_EPSILON &&
-                Math.abs(insideToOutsideY) < SPLIT_PLANE_EPSILON &&
-                Math.abs(insideToOutsideZ) < SPLIT_PLANE_EPSILON) {
+        if (Math.abs(insideToOutsideX) < TQuad.VERTEX_EPSILON &&
+                Math.abs(insideToOutsideY) < TQuad.VERTEX_EPSILON &&
+                Math.abs(insideToOutsideZ) < TQuad.VERTEX_EPSILON) {
             copyVertexToMultiple(inside, targetA, targetB, targetC);
             return;
         }
