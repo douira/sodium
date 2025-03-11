@@ -29,9 +29,9 @@ import net.minecraft.CrashReport;
 import net.minecraft.CrashReportCategory;
 import net.minecraft.ReportedException;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.block.model.BlockStateModel;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.chunk.VisGraph;
-import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
@@ -114,7 +114,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                         modelOffset.set(x & 15, y & 15, z & 15);
 
                         if (blockState.getRenderShape() == RenderShape.MODEL) {
-                            BakedModel model = cache.getBlockModels()
+                            BlockStateModel model = cache.getBlockModels()
                                     .getBlockModel(blockState);
                             blockRenderer.renderModel(model, blockState, blockPos, modelOffset);
                         }
@@ -132,7 +132,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                 BlockEntityRenderer<BlockEntity> renderer = Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(entity);
 
                                 if (renderer != null) {
-                                    renderData.addBlockEntity(entity, !renderer.shouldRenderOffScreen(entity));
+                                    renderData.addBlockEntity(entity, !renderer.shouldRenderOffScreen());
                                 }
                             }
                         }
@@ -152,7 +152,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         }
         profiler.popPush("mesh appenders");
 
-        PlatformLevelRenderHooks.INSTANCE.runChunkMeshAppenders(this.renderContext.getRenderers(), type -> buffers.get(DefaultMaterials.forRenderLayer(type)).asFallbackVertexConsumer(DefaultMaterials.forRenderLayer(type), collector),
+        PlatformLevelRenderHooks.INSTANCE.runChunkMeshAppenders(this.renderContext.getRenderers(), type -> buffers.get(DefaultMaterials.forChunkLayer(type)).asFallbackVertexConsumer(DefaultMaterials.forChunkLayer(type), collector),
                 slice);
 
         blockRenderer.release();

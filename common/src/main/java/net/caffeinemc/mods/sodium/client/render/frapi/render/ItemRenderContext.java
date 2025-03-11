@@ -21,39 +21,40 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.MatrixUtil;
 import net.caffeinemc.mods.sodium.api.texture.SpriteUtil;
 import net.caffeinemc.mods.sodium.api.util.ColorMixer;
+import net.caffeinemc.mods.sodium.client.render.frapi.SodiumRenderer;
 import net.caffeinemc.mods.sodium.client.render.frapi.helper.ColorHelper;
 import net.caffeinemc.mods.sodium.client.render.frapi.mesh.EncodingFormat;
+import net.caffeinemc.mods.sodium.client.render.frapi.mesh.MeshViewImpl;
 import net.caffeinemc.mods.sodium.client.render.frapi.mesh.MutableQuadViewImpl;
 import net.caffeinemc.mods.sodium.client.render.texture.SpriteFinderCache;
 import net.caffeinemc.mods.sodium.mixin.features.render.frapi.ItemRendererAccessor;
-import net.fabricmc.fabric.api.renderer.v1.material.BlendMode;
-import net.fabricmc.fabric.api.renderer.v1.material.GlintMode;
-import net.fabricmc.fabric.api.renderer.v1.material.RenderMaterial;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
-import net.fabricmc.fabric.api.renderer.v1.model.FabricBakedModel;
-import net.fabricmc.fabric.impl.renderer.VanillaModelEncoder;
+import net.fabricmc.fabric.api.renderer.v1.render.RenderLayerHelper;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.BlockStateModel;
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.entity.ItemRenderer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
-import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemDisplayContext;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.SingleThreadedRandomSource;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Supplier;
 
 /**
  * The render context used for item rendering.
  */
 public class ItemRenderContext extends AbstractRenderContext {
+    public static final ThreadLocal<ItemRenderContext> POOL = ThreadLocal.withInitial(ItemRenderContext::new);
     /** Value vanilla uses for item rendering.  The only sensible choice, of course.  */
     private static final long ITEM_RANDOM_SEED = 42L;
     private static final int GLINT_COUNT = ItemStackRenderState.FoilType.values().length;
@@ -62,10 +63,6 @@ public class ItemRenderContext extends AbstractRenderContext {
         {
             data = new int[EncodingFormat.TOTAL_STRIDE];
             clear();
-        }
-
-        public void bufferDefaultModel(BakedModel model) {
-            ItemRenderContext.this.bufferDefaultModel(this, model, null);
         }
 
 
@@ -81,11 +78,7 @@ public class ItemRenderContext extends AbstractRenderContext {
 
     private final MutableQuadViewImpl editorQuad = new ItemEmitter();
 
-    private final VanillaModelBufferer vanillaBufferer;
-
-    public ItemRenderContext(VanillaModelBufferer vanillaBufferer) {
-        this.vanillaBufferer = vanillaBufferer;
-    }
+    public ItemRenderContext() {}
 
     private final RandomSource random = new SingleThreadedRandomSource(ITEM_RANDOM_SEED);
     private final Supplier<RandomSource> randomSupplier = () -> {
@@ -115,12 +108,13 @@ public class ItemRenderContext extends AbstractRenderContext {
         return editorQuad;
     }
 
-    public void renderModel(ItemDisplayContext transformMode, PoseStack poseStack, MultiBufferSource bufferSource, int lightmap, int overlay, BakedModel model, int[] colors, RenderType layer, ItemStackRenderState.FoilType glint) {
-        this.transformMode = transformMode;
-        this.poseStack = poseStack;
+    public void renderItem(ItemDisplayContext displayContext, PoseStack poseStack, MultiBufferSource bufferSource, int lightmap, int overlay, int[] colors, List<BakedQuad> vanillaQuads, MeshViewImpl mesh, RenderType layer, ItemStackRenderState.FoilType glint) {
+        this.transformMode = displayContext;
         matPosition = poseStack.last().pose();
-        trustedNormals = poseStack.last().trustedNormals;
-        matNormal = poseStack.last().normal();
+        this.poseStack = poseStack;
+
+        trustedNormals = this.poseStack.last().trustedNormals;
+        matNormal = this.poseStack.last().normal();
         this.bufferSource = bufferSource;
         this.lightmap = lightmap;
         this.overlay = overlay;
@@ -129,7 +123,7 @@ public class ItemRenderContext extends AbstractRenderContext {
         defaultLayer = layer;
         defaultGlint = glint;
 
-        ((FabricBakedModel) model).emitItemQuads(getEmitter(), randomSupplier);
+        bufferQuads(vanillaQuads, mesh);
 
         this.poseStack = null;
         this.bufferSource = null;
@@ -139,10 +133,24 @@ public class ItemRenderContext extends AbstractRenderContext {
         Arrays.fill(vertexConsumerCache, null);
     }
 
+
+    private void bufferQuads(List<BakedQuad> vanillaQuads, MeshViewImpl mesh) {
+        QuadEmitter emitter = getEmitter();
+
+        final int vanillaQuadCount = vanillaQuads.size();
+
+        for (int j = 0; j < vanillaQuadCount; j++) {
+            final BakedQuad q = vanillaQuads.get(j);
+            emitter.fromBakedQuad(q);
+            emitter.emit();
+        }
+
+        mesh.outputTo(emitter);
+    }
+
     private void renderQuad(MutableQuadViewImpl quad) {
-        final RenderMaterial mat = quad.material();
-        final boolean emissive = mat.emissive();
-        final VertexConsumer vertexConsumer = getVertexConsumer(mat.blendMode(), mat.glintMode());
+        final boolean emissive = quad.emissive();
+        final VertexConsumer vertexConsumer = getVertexConsumer(quad.renderLayer(), quad.glint());
 
         tintQuad(quad);
         shadeQuad(quad, emissive);
@@ -188,20 +196,20 @@ public class ItemRenderContext extends AbstractRenderContext {
      * in {@code RenderLayers.getEntityBlockLayer}. Layers other than
      * translucent are mapped to cutout.
      */
-    private VertexConsumer getVertexConsumer(BlendMode blendMode, GlintMode glintMode) {
+    private VertexConsumer getVertexConsumer(@Nullable ChunkSectionLayer blendMode, @Nullable ItemStackRenderState.FoilType glintMode) {
         RenderType type;
         ItemStackRenderState.FoilType glint;
 
-        if (blendMode == BlendMode.DEFAULT) {
+        if (blendMode == null) {
             type = defaultLayer;
         } else {
-            type = blendMode == BlendMode.TRANSLUCENT ? Sheets.translucentItemSheet() : Sheets.cutoutBlockSheet();
+            type = RenderLayerHelper.getEntityBlockLayer(blendMode);
         }
 
-        if (glintMode == GlintMode.DEFAULT) {
+        if (glintMode == null) {
             glint = defaultGlint;
         } else {
-            glint = glintMode.glint;
+            glint = glintMode;
         }
 
         int cacheIndex;
@@ -237,37 +245,15 @@ public class ItemRenderContext extends AbstractRenderContext {
                 }
             }
 
-            return ItemRendererAccessor.sodium$getCompassFoilBuffer(bufferSource, type, specialGlintEntry);
+            return ItemRendererAccessor.sodium$getSpecialFoilBuffer(bufferSource, type, specialGlintEntry);
         }
 
         return ItemRenderer.getFoilBuffer(bufferSource, type, true, glint != ItemStackRenderState.FoilType.NONE);
     }
 
-    public void bufferDefaultModel(QuadEmitter quadEmitter, BakedModel model, @Nullable BlockState state) {
-        if (vanillaBufferer == null) {
-            VanillaModelEncoder.emitItemQuads(quadEmitter, model, null, randomSupplier);
-        } else {
-            VertexConsumer vertexConsumer;
-            if (defaultGlint == ItemStackRenderState.FoilType.SPECIAL) {
-                PoseStack.Pose pose = poseStack.last().copy();
-                if (transformMode == ItemDisplayContext.GUI) {
-                    MatrixUtil.mulComponentWise(pose.pose(), 0.5F);
-                } else if (transformMode.firstPerson()) {
-                    MatrixUtil.mulComponentWise(pose.pose(), 0.75F);
-                }
-
-                vertexConsumer = ItemRendererAccessor.sodium$getCompassFoilBuffer(bufferSource, defaultLayer, pose);
-            } else {
-                vertexConsumer = ItemRenderer.getFoilBuffer(bufferSource, defaultLayer, true, defaultGlint != ItemStackRenderState.FoilType.NONE);
-            }
-
-            vanillaBufferer.accept(model, colors, lightmap, overlay, poseStack, vertexConsumer);
-        }
-    }
-
     /** used to accept a method reference from the ItemRenderer. */
     @FunctionalInterface
     public interface VanillaModelBufferer {
-        void accept(BakedModel model, int[] colirs, int color, int overlay, PoseStack matrixStack, VertexConsumer buffer);
+        void accept(BlockStateModel model, int[] colirs, int color, int overlay, PoseStack matrixStack, VertexConsumer buffer);
     }
 }
