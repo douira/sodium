@@ -240,11 +240,9 @@ public class DynamicTopoData extends DynamicData {
         }
     }
 
-    public static DynamicTopoData fromMesh(CombinedCameraPos cameraPos, TQuad[] quads, SectionPos sectionPos,
-                                           GeometryPlanes geometryPlanes) {
+    public static DynamicTopoData fromMesh(CombinedCameraPos cameraPos, TQuad[] quads, SectionPos sectionPos, GeometryPlanes geometryPlanes) {
         var distancesByNormal = geometryPlanes.prepareAndGetDistances();
 
-        return new DynamicTopoData(sectionPos, quads, geometryPlanes,
-                cameraPos.getAbsoluteCameraPos(), distancesByNormal);
+        return new DynamicTopoData(sectionPos, quads, geometryPlanes, cameraPos.getAbsoluteCameraPos(), distancesByNormal);
     }
 }

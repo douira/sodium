@@ -33,7 +33,7 @@ public abstract class BSPNode {
     }
 
     public static BSPResult buildBSP(TQuad[] quads, SectionPos sectionPos, BSPNode oldRoot,
-                                     boolean prepareNodeReuse, QuadSplittingMode quadSplittingMode) {
+            boolean prepareNodeReuse, QuadSplittingMode quadSplittingMode) {
         // throw if there's too many quads
         InnerPartitionBSPNode.validateQuadCount(quads.length);
 
