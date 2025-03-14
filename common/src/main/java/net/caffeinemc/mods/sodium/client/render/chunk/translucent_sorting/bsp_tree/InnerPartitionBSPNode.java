@@ -306,7 +306,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             Arrays.sort(points.elements(), 0, points.size());
 
             // the current partition plane distance (dot product),
-            // updated when an interval ends or a side is encountered, used to add quads to quadsOn and for splitting
+            // updated when an interval ends or a side is encountered, used to add quads to quadsOn
             float distance = Float.NaN;
 
             // set of quads that are within the partition
@@ -323,6 +323,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             if (canSplitQuads) {
                 splittingGroup.clear();
             }
+            float splitDistance = Float.NaN;
             for (int i = 0, size = points.size(); i < size; i++) {
                 long point = points.getLong(i);
                 switch (decodeType(point)) {
@@ -375,23 +376,21 @@ abstract class InnerPartitionBSPNode extends BSPNode {
                             }
                             quadsOn.add(pointQuadIndex);
                         } else {
+                            // add this point quad to the quads before the partition plane
                             if (quadsBefore == null) {
                                 throw new IllegalStateException("there must be started intervals here");
                             }
                             quadsBefore.add(pointQuadIndex);
-                            if (quadsOn == null) {
+
+                            // update the splitting group if the distance didn't change
+                            if (canSplitQuads) {
                                 var ownDistance = decodeDistance(point);
-
-                                // update the splitting group if the distance didn't change
-                                if (canSplitQuads) {
-                                    if (ownDistance == distance || Float.isNaN(distance)) {
-                                        splittingGroup.add(pointQuadIndex);
-                                    } else {
-                                        flushBestSplittingGroup(splittingGroup, bestSplittingGroup, axis);
-                                    }
+                                if (ownDistance == splitDistance || Float.isNaN(splitDistance)) {
+                                    splittingGroup.add(pointQuadIndex);
+                                } else {
+                                    flushBestSplittingGroup(splittingGroup, bestSplittingGroup, axis);
                                 }
-
-                                distance = ownDistance;
+                                splitDistance = ownDistance;
                             }
                         }
                     }
@@ -510,7 +509,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
             // eliminate quads that lie in the split plane
             if (quadFacing == representativeFacing && insideQuad.getAccurateDotProduct() == splitDistance &&
                     (representativeFacing != ModelQuadFacing.UNASSIGNED ||
-                            insideQuad.getVeryAccurateNormal().equals(representative.getVeryAccurateNormal()))) {
+                            insideQuad.getVeryAccurateNormal().equals(splitPlane))) {
                 splittingGroup.add(candidateIndex);
                 continue;
             }
