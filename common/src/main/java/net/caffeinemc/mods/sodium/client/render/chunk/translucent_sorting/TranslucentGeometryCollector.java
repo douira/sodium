@@ -94,6 +94,14 @@ public class TranslucentGeometryCollector {
         this.sectionPos = sectionPos;
     }
 
+    /**
+     * Collects a quad to be sorted. Note that if the quad's geometry and/or its vertices make it axis-aligned but it still uses the {@link ModelQuadFacing#UNASSIGNED} facing, dynamic sorting will break. Checking every quad for this would slow things down.
+     *
+     * @param vertices the vertices of the quad
+     * @param facing the facing of the quad
+     * @param packedNormal the packed normal of the quad
+     * @return true if the quad is invalid and should be discarded from the model entirely, false otherwise.
+     */
     public boolean appendQuad(ChunkVertexEncoder.Vertex[] vertices, ModelQuadFacing facing, int packedNormal) {
         TQuad quad;
         if (this.isSplittingQuads()) {

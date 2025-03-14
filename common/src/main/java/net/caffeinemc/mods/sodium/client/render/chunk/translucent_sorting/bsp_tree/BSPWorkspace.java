@@ -22,6 +22,7 @@ class BSPWorkspace extends ObjectArrayList<TQuad> {
 
     private final SectionPos sectionPos;
     final boolean prepareNodeReuse;
+    final boolean quantizeTriggerNormals;
 
     private int quadCount;
     private final int maxQuadCount;
@@ -32,6 +33,7 @@ class BSPWorkspace extends ObjectArrayList<TQuad> {
         super(quads);
         this.sectionPos = sectionPos;
         this.prepareNodeReuse = prepareNodeReuse;
+        this.quantizeTriggerNormals = quadSplittingMode.quantizeTriggerNormals();
 
         this.quadCount = quads.length;
         if (quadSplittingMode.allowsSplitting()) {

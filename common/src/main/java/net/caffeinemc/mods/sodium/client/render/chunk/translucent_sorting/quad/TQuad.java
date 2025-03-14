@@ -31,7 +31,7 @@ public abstract class TQuad {
      * at the origin onto which the normals are projected. The normals are snapped
      * to the nearest grid point.
      */
-    static final int NORMAL_QUANTIZATION_STEPS = 40;
+    static final int NORMAL_QUANTIZATION_STEPS = 4;
 
     private static final float INV_QUANTIZE_EPSILON = 256f;
     public static final float QUANTIZE_EPSILON = 1f / INV_QUANTIZE_EPSILON;
