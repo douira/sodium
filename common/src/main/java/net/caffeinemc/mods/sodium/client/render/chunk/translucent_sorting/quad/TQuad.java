@@ -184,7 +184,7 @@ public abstract class TQuad {
         if (!this.facing.isAligned()) {
             // quantize the normal, get the new facing and get fix the dot product to match
             this.getQuantizedNormal();
-            this.facing = ModelQuadFacing.fromNormal(this.quantizedNormal.x(), this.quantizedNormal.y(), this.quantizedNormal.z());
+            this.facing = ModelQuadFacing.fromNormal(this.quantizedNormal);
             if (this.facing.isAligned()) {
                 this.quantizedDotProduct = getAlignedDotProduct(this.facing, this.extents);
             } else {
