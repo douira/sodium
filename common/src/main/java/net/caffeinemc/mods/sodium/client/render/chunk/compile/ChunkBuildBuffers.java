@@ -161,21 +161,7 @@ public class ChunkBuildBuffers {
         vertexSegments[UNASSIGNED_SEGMENT_INDEX] = vertexTotal;
         vertexSegments[UNASSIGNED_SEGMENT_INDEX + 1] = ModelQuadFacing.UNASSIGNED.ordinal();
 
-        printDebugInfo(builder, updatedQuads);
-
         return new BuiltSectionMeshParts(mergedBuffer, vertexSegments);
-    }
-
-    private void printDebugInfo(ChunkModelBuilder builder, UpdatedQuadsList updatedQuads) {
-        int oldVertexCount = 0;
-        for (ModelQuadFacing facing : ModelQuadFacing.VALUES) {
-            oldVertexCount += builder.getVertexBuffer(facing).count();
-        }
-
-        var totalVertexCount = TranslucentData.quadCountToVertexCount(updatedQuads.getMeshQuadCount());
-        var addedVertexCount = totalVertexCount - oldVertexCount;
-
-        System.out.println("Old quad count: " + oldVertexCount / 4 + ", added quad count: " + addedVertexCount / 4 + ", new total quad count: " + totalVertexCount / 4 + ", amplification ratio: " + (double) totalVertexCount / oldVertexCount);
     }
 
     public void destroy() {
