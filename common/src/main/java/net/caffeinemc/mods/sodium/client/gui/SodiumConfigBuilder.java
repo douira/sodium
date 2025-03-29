@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Optional;
+import java.util.Set;
 
 // TODO: get initialValue from the vanilla options (it's private)
 public class SodiumConfigBuilder implements ConfigEntryPoint {
@@ -438,6 +439,11 @@ public class SodiumConfigBuilder implements ConfigEntryPoint {
                                         Component.translatable("options.graphics.fancy"),
                                         Component.translatable("options.graphics.fabulous")))
                                 .setDefaultValue(GraphicsStatus.FANCY)
+                                .setAllowedValues(
+                                        Minecraft.getInstance().isRunning() && !Minecraft.getInstance().getGpuWarnlistManager().isSkippingFabulous() ?
+                                                Set.of(GraphicsStatus.FAST, GraphicsStatus.FANCY) :
+                                                Set.of(GraphicsStatus.values())
+                                )
                                 .setBinding(this.vanillaOpts.graphicsMode()::set, this.vanillaOpts.graphicsMode()::get)
                                 .setImpact(OptionImpact.HIGH)
                                 .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
