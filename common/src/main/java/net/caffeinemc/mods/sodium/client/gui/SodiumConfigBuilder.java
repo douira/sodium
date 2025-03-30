@@ -439,11 +439,12 @@ public class SodiumConfigBuilder implements ConfigEntryPoint {
                                         Component.translatable("options.graphics.fancy"),
                                         Component.translatable("options.graphics.fabulous")))
                                 .setDefaultValue(GraphicsStatus.FANCY)
-                                .setAllowedValues(
-                                        Minecraft.getInstance().isRunning() && !Minecraft.getInstance().getGpuWarnlistManager().isSkippingFabulous() ?
-                                                Set.of(GraphicsStatus.FAST, GraphicsStatus.FANCY) :
-                                                Set.of(GraphicsStatus.values())
-                                )
+                                .setAllowedValuesProvider(state -> {
+                                    if (Minecraft.getInstance().isRunning() && Minecraft.getInstance().getGpuWarnlistManager().isSkippingFabulous()) {
+                                        return Set.of(GraphicsStatus.FAST, GraphicsStatus.FANCY);
+                                    }
+                                    return Set.of(GraphicsStatus.values());
+                                })
                                 .setBinding(this.vanillaOpts.graphicsMode()::set, this.vanillaOpts.graphicsMode()::get)
                                 .setImpact(OptionImpact.HIGH)
                                 .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
