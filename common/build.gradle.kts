@@ -16,7 +16,7 @@ val configurationPreLaunch = configurations.create("preLaunchDeps") {
 sourceSets {
     val main = getByName("main")
     val api = create("api")
-    val workarounds = create("workarounds")
+    val boot = create("boot")
 
     api.apply {
         java {
@@ -24,7 +24,7 @@ sourceSets {
         }
     }
 
-    workarounds.apply {
+    boot.apply {
         java {
             compileClasspath += configurationPreLaunch
         }
@@ -33,7 +33,7 @@ sourceSets {
     main.apply {
         java {
             compileClasspath += api.output
-            compileClasspath += workarounds.output
+            compileClasspath += boot.output
         }
     }
 
@@ -120,7 +120,7 @@ fun exportSourceSet(name: String, sourceSet: SourceSet) {
 
 exportSourceSet("commonMain", sourceSets["main"])
 exportSourceSet("commonApi", sourceSets["api"])
-exportSourceSet("commonEarlyLaunch", sourceSets["workarounds"])
+exportSourceSet("commonBoot", sourceSets["boot"])
 exportSourceSet("commonDesktop", sourceSets["desktop"])
 
 tasks.jar { enabled = false }
