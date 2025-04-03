@@ -287,7 +287,7 @@ public class TranslucentGeometryCollector {
      * @param sortType the sort type to filter
      */
     private static SortType filterSortType(SortType sortType) {
-        SortBehavior sortBehavior = SodiumClientMod.options().performance.getSortBehavior();
+        SortBehavior sortBehavior = SodiumClientMod.options().debug.getSortBehavior();
         switch (sortBehavior) {
             case OFF:
                 return SortType.NONE;
@@ -351,7 +351,7 @@ public class TranslucentGeometryCollector {
             return SortType.NONE;
         }
 
-        SortBehavior sortBehavior = SodiumClientMod.options().performance.getSortBehavior();
+        SortBehavior sortBehavior = SodiumClientMod.options().debug.getSortBehavior();
         if (sortBehavior.getSortMode() == SortBehavior.SortMode.NONE) {
             return SortType.NONE;
         }
