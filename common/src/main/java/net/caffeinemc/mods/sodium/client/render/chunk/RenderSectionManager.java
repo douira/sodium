@@ -460,7 +460,7 @@ public class RenderSectionManager {
 
             // stop if the section is in this list but doesn't have this update type
             var pendingUpdate = section.getPendingUpdate();
-            if (pendingUpdate != null && pendingUpdate != type) {
+            if (pendingUpdate != type) {
                 continue;
             }
 
@@ -472,6 +472,7 @@ public class RenderSectionManager {
                 if (task == null) {
                     // when a sort task is null it means the render section has no dynamic data and
                     // doesn't need to be sorted. Nothing needs to be done.
+                    section.setPendingUpdate(null);
                     continue;
                 }
             } else {
@@ -505,6 +506,12 @@ public class RenderSectionManager {
 
             section.setLastSubmittedFrame(frame);
             section.setPendingUpdate(null);
+        }
+        
+        // if the queue is not empty that means there's still sections with tasks that haven't been processed,
+        // since tasks lists are flushed every frame, the graph needs to remain dirty so that they get processed in the next frame
+        if (!queue.isEmpty()) {
+            this.markGraphDirty();
         }
     }
 
@@ -588,6 +595,9 @@ public class RenderSectionManager {
             if (pendingUpdate != null) {
                 section.setPendingUpdate(pendingUpdate);
                 section.prepareTrigger(isDirectTrigger);
+
+                // update graph to pick up the sort task on this section
+                this.needsGraphUpdate = true;
             }
         }
     }
@@ -612,7 +622,7 @@ public class RenderSectionManager {
             if (pendingUpdate != null) {
                 section.setPendingUpdate(pendingUpdate);
 
-                // force update to schedule rebuild task on this section
+                // update graph to pick up the rebuild task on this section
                 this.needsGraphUpdate = true;
             }
         }
