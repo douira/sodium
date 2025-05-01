@@ -66,7 +66,7 @@ public class PendingTaskCollector implements OcclusionCuller.GraphOcclusionVisit
         int type = section.getPendingUpdate();
 
         // collect tasks even if they're important, whether they're actually important is decided later
-        if (type != 0 && section.getTaskCancellationToken() == null) {
+        if (type != 0) {
             this.addPendingSection(section, type);
         }
     }
