@@ -57,7 +57,11 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
     private void addToRebuildLists(RenderSection section) {
         ChunkUpdateType type = section.getPendingUpdate();
 
-        if (type != null && section.getTaskCancellationToken() == null) {
+        // if there's a pending update, add this section to the rebuild lists.
+        // this happens even if there's already a pending task,
+        // because that pending task may have been scheduled for an older version of the chunk,
+        // and it has since been marked as needing another update.
+        if (type != null) {
             Queue<RenderSection> queue = this.sortedRebuildLists.get(type);
 
             if (queue.size() < type.getMaximumQueueSize()) {
