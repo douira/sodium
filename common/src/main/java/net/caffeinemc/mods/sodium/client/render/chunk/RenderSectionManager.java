@@ -671,6 +671,9 @@ public class RenderSectionManager {
         }
 
         section.setPendingUpdate(joined, this.lastFrameAtTime);
+        
+        // mark graph as dirty so that it picks up the section's pending task
+        this.markGraphDirty();
 
         return true;
     }
