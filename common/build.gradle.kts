@@ -2,7 +2,7 @@ plugins {
     id("multiloader-base")
     id("java-library")
 
-    id("fabric-loom") version ("1.9.2")
+    id("fabric-loom") version ("1.10.2")
 }
 
 base {
@@ -38,10 +38,6 @@ sourceSets {
     }
 
     create("desktop")
-}
-
-repositories {
-    mavenLocal()
 }
 
 dependencies {
