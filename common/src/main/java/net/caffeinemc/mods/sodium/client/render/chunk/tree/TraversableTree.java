@@ -1,8 +1,10 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.tree;
 
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.CoordinateSectionVisitor;
 import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.OcclusionCuller;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
+import net.minecraft.core.SectionPos;
 import org.joml.FrustumIntersection;
 
 /**
@@ -19,6 +21,7 @@ public class TraversableTree extends Tree {
     // set temporarily during traversal
     private int cameraOffsetX, cameraOffsetY, cameraOffsetZ;
     private CoordinateSectionVisitor visitor;
+    private LongArrayList sections = new LongArrayList(64);
     protected Viewport viewport;
     private float distanceLimit;
 
@@ -73,8 +76,9 @@ public class TraversableTree extends Tree {
 
         // everything is already inside the distance limit if the build distance is smaller
         var initialInside = this.distanceLimit >= buildDistance ? INSIDE_DISTANCE : 0;
+        this.sections.clear();
         this.traverse(getChildOrderModulator(0, 0, 0, 1 << 5), 0, 5, initialInside);
-
+        this.sections.forEach(this.visitor::visit);
         this.visitor = null;
         this.viewport = null;
     }
@@ -106,7 +110,7 @@ public class TraversableTree extends Tree {
                         int z = deinterleave6(sectionOrigin >> 2) + this.offsetZ;
 
                         if (inside == FULLY_INSIDE || testLeafNode(x, y, z, inside)) {
-                            this.visitor.visit(x, y, z);
+                            this.sections.add(SectionPos.asLong(x, y, z));
                         }
                     }
                 }
