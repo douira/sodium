@@ -28,8 +28,7 @@ public class OcclusionCuller {
                             Viewport viewport,
                             float searchDistance,
                             boolean useOcclusionCulling,
-                            int frame)
-    {
+                            int frame) {
         final var queues = this.queue;
         queues.reset();
 
@@ -48,8 +47,7 @@ public class OcclusionCuller {
                                      boolean useOcclusionCulling,
                                      int frame,
                                      ReadQueue<RenderSection> readQueue,
-                                     WriteQueue<RenderSection> writeQueue)
-    {
+                                     WriteQueue<RenderSection> writeQueue) {
         RenderSection section;
 
         while ((section = readQueue.dequeue()) != null) {
@@ -63,16 +61,23 @@ public class OcclusionCuller {
 
             {
                 if (useOcclusionCulling) {
-                    var sectionVisibilityData = section.getVisibilityData();
+                    var visibilityDataSet = section.getVisibilityData();
+                    if (visibilityDataSet == null) {
+                        // No visibility data, so we can't traverse into any neighbors.
+                        continue;
+                    }
+
+                    // get the visibility data for the camera perspective relative to this section
+                    var visibilityData = joinVisibilityData(visibilityDataSet, section, viewport);
 
                     // occlude paths through the section if it's being viewed at an angle where
                     // the other side can't possibly be seen
-                    sectionVisibilityData &= getAngleVisibilityMask(viewport, section);
+                    visibilityData &= getAngleVisibilityMask(viewport, section);
 
                     // When using occlusion culling, we can only traverse into neighbors for which there is a path of
                     // visibility through this chunk. This is determined by taking all the incoming paths to this chunk and
                     // creating a union of the outgoing paths from those.
-                    connections = VisibilityEncoding.getConnections(sectionVisibilityData, section.getIncomingDirections());
+                    connections = VisibilityEncoding.getConnections(visibilityData, section.getIncomingDirections());
                 } else {
                     // Not using any occlusion culling, so traversing in any direction is legal.
                     connections = GraphDirectionSet.ALL;
@@ -85,6 +90,47 @@ public class OcclusionCuller {
 
             visitNeighbors(writeQueue, section, connections, frame);
         }
+    }
+
+    private static long joinVisibilityData(long[] visibilityDataSet, RenderSection section, Viewport viewport) {
+        var transform = viewport.getTransform();
+        
+        // determine which base perspectives need to be combined based on the camera position relative to the section
+        int directionSetsX = 0;
+        if (transform.x >= section.getOriginX()) {
+            directionSetsX = 0b00001111;
+        }
+        if (transform.x <= section.getOriginX() + 16) {
+            directionSetsX |= 0b11110000;
+        }
+        
+        int directionSetsZ = 0;
+        if (transform.z >= section.getOriginZ()) {
+            directionSetsZ = 0b00110011;
+        }
+        if (transform.z <= section.getOriginZ() + 16) {
+            directionSetsZ |= 0b11001100;
+        }
+        
+        int directionSetsY = 0;
+        if (transform.y >= section.getOriginY()) {
+            directionSetsY = 0b01010101;
+        }
+        if (transform.y <= section.getOriginY() + 16) {
+            directionSetsY |= 0b10101010;
+        }
+        
+        int directionSets = directionSetsX & directionSetsY & directionSetsZ;
+        
+        // combine the relevant visibility data sets
+        long visibilityData = 0L;
+        for (int i = 0; i < 8; i++) {
+            if ((directionSets & (1 << i)) != 0) {
+                visibilityData |= visibilityDataSet[i];
+            }
+        }
+        
+        return visibilityData;
     }
 
     private static final long UP_DOWN_OCCLUDED = (1L << VisibilityEncoding.bit(GraphDirection.DOWN, GraphDirection.UP)) | (1L << VisibilityEncoding.bit(GraphDirection.UP, GraphDirection.DOWN));
@@ -170,11 +216,11 @@ public class OcclusionCuller {
     private static int getOutwardDirections(SectionPos origin, RenderSection section) {
         int planes = 0;
 
-        planes |= section.getChunkX() <= origin.getX() ? 1 << GraphDirection.WEST  : 0;
-        planes |= section.getChunkX() >= origin.getX() ? 1 << GraphDirection.EAST  : 0;
+        planes |= section.getChunkX() <= origin.getX() ? 1 << GraphDirection.WEST : 0;
+        planes |= section.getChunkX() >= origin.getX() ? 1 << GraphDirection.EAST : 0;
 
-        planes |= section.getChunkY() <= origin.getY() ? 1 << GraphDirection.DOWN  : 0;
-        planes |= section.getChunkY() >= origin.getY() ? 1 << GraphDirection.UP    : 0;
+        planes |= section.getChunkY() <= origin.getY() ? 1 << GraphDirection.DOWN : 0;
+        planes |= section.getChunkY() >= origin.getY() ? 1 << GraphDirection.UP : 0;
 
         planes |= section.getChunkZ() <= origin.getZ() ? 1 << GraphDirection.NORTH : 0;
         planes |= section.getChunkZ() >= origin.getZ() ? 1 << GraphDirection.SOUTH : 0;
@@ -204,8 +250,12 @@ public class OcclusionCuller {
     private static int nearestToZero(int min, int max) {
         // this compiles to slightly better code than Math.min(Math.max(0, min), max)
         int clamped = 0;
-        if (min > 0) { clamped = min; }
-        if (max < 0) { clamped = max; }
+        if (min > 0) {
+            clamped = min;
+        }
+        if (max < 0) {
+            clamped = max;
+        }
         return clamped;
     }
 
@@ -223,7 +273,7 @@ public class OcclusionCuller {
 
     // this bigger chunk section size is only used for frustum-testing nearby sections with large models
     private static final float CHUNK_SECTION_SIZE_NEARBY = CHUNK_SECTION_RADIUS + 2.0f /* bigger model extent */ + 0.125f /* epsilon */;
-    
+
     public static boolean isWithinNearbySectionFrustum(Viewport viewport, RenderSection section) {
         return viewport.isBoxVisible(section.getCenterX(), section.getCenterY(), section.getCenterZ(),
                 CHUNK_SECTION_SIZE_NEARBY, CHUNK_SECTION_SIZE_NEARBY, CHUNK_SECTION_SIZE_NEARBY);
@@ -266,8 +316,7 @@ public class OcclusionCuller {
                       Viewport viewport,
                       float searchDistance,
                       boolean useOcclusionCulling,
-                      int frame)
-    {
+                      int frame) {
         var origin = viewport.getChunkCoord();
 
         if (origin.getY() < this.level.getMinSectionY()) {
@@ -301,7 +350,8 @@ public class OcclusionCuller {
         if (useOcclusionCulling) {
             // Since the camera is located inside this chunk, there are no "incoming" directions. So we need to instead
             // find any possible paths out of this chunk and enqueue those neighbors.
-            outgoing = VisibilityEncoding.getConnections(section.getVisibilityData());
+            outgoing = VisibilityEncoding.getConnections(
+                    joinVisibilityData(section.getVisibilityData(), section, viewport));
         } else {
             // Occlusion culling is disabled, so we can traverse into any neighbor.
             outgoing = GraphDirectionSet.ALL;
@@ -318,8 +368,7 @@ public class OcclusionCuller {
                                         float searchDistance,
                                         int frame,
                                         int height,
-                                        int direction)
-    {
+                                        int direction) {
         var origin = viewport.getChunkCoord();
         var radius = Mth.floor(searchDistance / 16.0f);
 

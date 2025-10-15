@@ -28,7 +28,7 @@ public class RenderSection {
     private final int chunkX, chunkY, chunkZ;
 
     // Occlusion Culling State
-    private long visibilityData = VisibilityEncoding.NULL;
+    private long[] visibilityData = null;
 
     private int incomingDirections;
     private int lastVisibleFrame = -1;
@@ -172,7 +172,7 @@ public class RenderSection {
 
         this.built = false;
         this.flags = RenderSectionFlags.NONE;
-        this.visibilityData = VisibilityEncoding.NULL;
+        this.visibilityData = null;
         this.globalBlockEntities = null;
         this.culledBlockEntities = null;
         this.animatedSprites = null;
@@ -323,7 +323,7 @@ public class RenderSection {
     /**
      * Returns the occlusion culling data which determines this chunk's connectedness on the visibility graph.
      */
-    public long getVisibilityData() {
+    public long[] getVisibilityData() {
         return this.visibilityData;
     }
 

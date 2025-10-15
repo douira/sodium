@@ -3,6 +3,7 @@ package net.caffeinemc.mods.sodium.client.render.chunk.data;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.caffeinemc.mods.sodium.api.texture.SpriteUtil;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionFlags;
+import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.DirectionalVisGraph;
 import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.VisibilityEncoding;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import net.minecraft.client.renderer.chunk.VisibilitySet;
@@ -23,7 +24,7 @@ public class BuiltSectionInfo {
     public static final BuiltSectionInfo EMPTY = createEmptyData();
 
     public final int flags;
-    public final long visibilityData;
+    public final long[] visibilityData;
 
     public final BlockEntity @Nullable[] globalBlockEntities;
     public final BlockEntity @Nullable[] culledBlockEntities;
@@ -33,7 +34,7 @@ public class BuiltSectionInfo {
                              @NotNull Collection<BlockEntity> globalBlockEntities,
                              @NotNull Collection<BlockEntity> culledBlockEntities,
                              @NotNull Collection<TextureAtlasSprite> animatedSprites,
-                             @NotNull VisibilitySet occlusionData) {
+                             @NotNull VisibilitySet[] occlusionData) {
         this.globalBlockEntities = toArray(globalBlockEntities, BlockEntity[]::new);
         this.culledBlockEntities = toArray(culledBlockEntities, BlockEntity[]::new);
         this.animatedSprites = toArray(animatedSprites, TextureAtlasSprite[]::new);
@@ -54,7 +55,10 @@ public class BuiltSectionInfo {
 
         this.flags = flags;
 
-        this.visibilityData = VisibilityEncoding.encode(occlusionData);
+        this.visibilityData = new long[occlusionData.length];
+        for (int i = 0; i < occlusionData.length; i++) {
+            this.visibilityData[i] = VisibilityEncoding.encode(occlusionData[i]);
+        }
     }
 
     public static class Builder {
@@ -63,13 +67,13 @@ public class BuiltSectionInfo {
         private final List<BlockEntity> culledBlockEntities = new ArrayList<>();
         private final Set<TextureAtlasSprite> animatedSprites = new ObjectOpenHashSet<>();
 
-        private VisibilitySet occlusionData;
+        private VisibilitySet[] occlusionData;
 
         public void addRenderPass(TerrainRenderPass pass) {
             this.blockRenderPasses.add(pass);
         }
 
-        public void setOcclusionData(VisibilitySet data) {
+        public void setOcclusionData(VisibilitySet[] data) {
             this.occlusionData = data;
         }
 
@@ -99,9 +103,11 @@ public class BuiltSectionInfo {
     }
 
     private static BuiltSectionInfo createEmptyData() {
-        VisibilitySet occlusionData = new VisibilitySet();
-        occlusionData.add(EnumSet.allOf(Direction.class));
-
+        VisibilitySet fullyVisible = new VisibilitySet();
+        fullyVisible.add(EnumSet.allOf(Direction.class));
+        var occlusionData = new VisibilitySet[DirectionalVisGraph.BASE_PERSPECTIVES];
+        Arrays.fill(occlusionData, fullyVisible);
+        
         BuiltSectionInfo.Builder meshInfo = new BuiltSectionInfo.Builder();
         meshInfo.setOcclusionData(occlusionData);
 

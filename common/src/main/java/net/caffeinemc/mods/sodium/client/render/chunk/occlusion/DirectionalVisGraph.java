@@ -3,11 +3,24 @@ package net.caffeinemc.mods.sodium.client.render.chunk.occlusion;
 import net.caffeinemc.mods.sodium.client.util.collections.BitArray;
 import net.minecraft.client.renderer.chunk.VisibilitySet;
 
-public class DirectionalVisGraph implements VisibilityGraph {
-    private static final int DX = 1;
-    private static final int DZ = 16;
-    private static final int DY = 16 * 16;
+import java.util.Arrays;
+
+public class DirectionalVisGraph  {
     private static final int SIZE = 16 * 16 * 16;
+    public static final int BASE_PERSPECTIVES = 8;
+    private static final int[] DIRECTION_SETS = new int[] {
+            // corresponding to GraphDirection from MSB to LSB:
+            // east, west, south, north, up, down
+            
+            0b010101, // 0: west, north, down
+            0b010110, // 1: west, north, up
+            0b011001, // 2: west, south, down
+            0b011010, // 3: west, south, up
+            0b100101, // 4: east, north, down
+            0b100110, // 5: east, north, up
+            0b101001, // 6: east, south, down
+            0b101010, // 7: east, south, up
+    };
 
     private final BitArray blocks = new BitArray(SIZE);
     private int filled = 0;
@@ -28,27 +41,41 @@ public class DirectionalVisGraph implements VisibilityGraph {
         return (index >> 4) & 15;
     }
 
-    @Override
     public void setOpaque(int x, int y, int z) {
         this.blocks.set(getIndex(x, y, z));
         this.filled++;
     }
-
-    @Override
-    public VisibilitySet resolve() {
+    
+    private VisibilitySet[] filledWith(boolean value) {
         var visibilitySet = new VisibilitySet();
-
+        visibilitySet.setAll(value);
+        var visibilitySets = new VisibilitySet[BASE_PERSPECTIVES];
+        Arrays.fill(visibilitySets, visibilitySet);
+        return visibilitySets;
+    }
+    
+    public VisibilitySet[] resolve() {
         // if all blocks are filled, nothing is visible
         if (this.filled == SIZE) {
-            visibilitySet.setAll(false);
-            return visibilitySet;
+            return filledWith(false);
         }
 
         // if fewer blocks are filled than necessary to block visibility between two faces, all faces are visible to each other
         if (this.filled < 256) {
-            visibilitySet.setAll(true);
-            return visibilitySet;
+            return filledWith(true);
         }
+        
+        // generate visibility data for each base perspective
+        var results = new VisibilitySet[BASE_PERSPECTIVES];
+        for (int i = 0; i < BASE_PERSPECTIVES; i++) {
+            results[i] = resolveWithDirections(DIRECTION_SETS[i]);
+        }
+        
+        return results;
+    }
+    
+    private VisibilitySet resolveWithDirections(int directionSet) {
+        var visibilitySet = new VisibilitySet();
 
         // DFS from each face, and going backwards in the direction of the origin face is not permitted
         // TODO: technically it can't actually get SIZE long. The real max length is the maximum path length through the cube without touching adjacent blocks (under certain direction ordering restrictions)
@@ -76,17 +103,17 @@ public class DirectionalVisGraph implements VisibilityGraph {
                     for (int x = minX; x <= maxX; x++) {
                         int index = getIndex(x, y, z);
                         if (!this.blocks.get(index)) {
-                            search(visibilitySet, stackPos, stackDirs, originDirection, x, y, z);
+                            search(visibilitySet, stackPos, stackDirs, originDirection, directionSet, x, y, z);
                         }
                     }
                 }
             }
         }
-        
+
         return visibilitySet;
     }
 
-    private void search(VisibilitySet visibilitySet, short[] stackPos, byte[] stackDirs, int originFace, int startX, int startY, int startZ) {
+    private void search(VisibilitySet visibilitySet, short[] stackPos, byte[] stackDirs, int originFace, int directionSet, int startX, int startY, int startZ) {
         var visited = this.blocks.copy();
 
         int stackSize = 0;
@@ -95,7 +122,8 @@ public class DirectionalVisGraph implements VisibilityGraph {
         stackDirs[0] = -1;
         visited.set(originIndex);
 
-        int connectedFaces = GraphDirectionSet.of(originFace);
+        // the faces that we cannot move towards are the ones that cannot become visible because of teh perspective of the camera. This always includes the origin face.
+        int connectedFaces = GraphDirectionSet.of(~directionSet);
 
         while (stackSize > 0) {
             int stackIndex = stackSize - 1;
@@ -116,8 +144,8 @@ public class DirectionalVisGraph implements VisibilityGraph {
 
             stackDirs[stackIndex] = (byte) nextDir;
 
-            // skip going back towards the origin face
-            if (nextDir == originFace) {
+            // skip disallowed directions
+            if ((directionSet & (1 << nextDir)) == 0) {
                 // fast path backtracking when the last direction is skipped
                 if (nextDir + 1 == GraphDirection.COUNT) {
                     stackSize--;

@@ -13,7 +13,6 @@ import net.caffeinemc.mods.sodium.client.render.chunk.compile.pipeline.BlockRend
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionInfo;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.DirectionalVisGraph;
-import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.VisibilityGraph;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.material.DefaultMaterials;
@@ -68,7 +67,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
     public ChunkBuildOutput execute(ChunkBuildContext buildContext, CancellationToken cancellationToken) {
         ProfilerFiller profiler = Profiler.get();
         BuiltSectionInfo.Builder renderData = new BuiltSectionInfo.Builder();
-        VisibilityGraph occluder = new DirectionalVisGraph();
+        DirectionalVisGraph occluder = new DirectionalVisGraph();
         VisGraph oldVisGraph = new VisGraph();
 
         ChunkBuildBuffers buffers = buildContext.buffers;
