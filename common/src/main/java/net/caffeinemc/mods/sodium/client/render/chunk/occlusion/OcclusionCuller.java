@@ -350,8 +350,14 @@ public class OcclusionCuller {
         if (useOcclusionCulling) {
             // Since the camera is located inside this chunk, there are no "incoming" directions. So we need to instead
             // find any possible paths out of this chunk and enqueue those neighbors.
+            var visibilityDataSet = section.getVisibilityData();
+            if (visibilityDataSet == null) {
+                // No visibility data, so we can't traverse into any neighbors.
+                return;
+            }
+            
             outgoing = VisibilityEncoding.getConnections(
-                    joinVisibilityData(section.getVisibilityData(), section, viewport));
+                    joinVisibilityData(visibilityDataSet, section, viewport));
         } else {
             // Occlusion culling is disabled, so we can traverse into any neighbor.
             outgoing = GraphDirectionSet.ALL;
