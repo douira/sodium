@@ -161,8 +161,8 @@ public class DirectionalVisGraph  {
                 // reached the edge, mark visibility between origin face and this face
                 connectedFaces |= GraphDirectionSet.of(nextDir);
 
-                // stop searching if all faces are connected
-                if (connectedFaces == GraphDirectionSet.ALL) {
+                // stop searching if all potentially reachable faces are connected
+                if (connectedFaces == directionSet) {
                     break;
                 }
 
