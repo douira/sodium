@@ -7,7 +7,6 @@ import java.util.Arrays;
 
 public class DirectionalVisGraph  {
     private static final int SIZE = 16 * 16 * 16;
-    public static final int BASE_PERSPECTIVES = 8;
     private static final int[] DIRECTION_SETS = new int[] {
             // corresponding to GraphDirection from MSB to LSB:
             // east, west, south, north, up, down
@@ -46,28 +45,28 @@ public class DirectionalVisGraph  {
         this.filled++;
     }
     
-    private VisibilitySet[] filledWith(boolean value) {
-        var visibilitySet = new VisibilitySet();
-        visibilitySet.setAll(value);
-        var visibilitySets = new VisibilitySet[BASE_PERSPECTIVES];
-        Arrays.fill(visibilitySets, visibilitySet);
-        return visibilitySets;
-    }
-    
     public VisibilitySet[] resolve() {
         // if all blocks are filled, nothing is visible
         if (this.filled == SIZE) {
-            return filledWith(false);
+            var visibilitySet = new VisibilitySet();
+            visibilitySet.setAll(false);
+            return new VisibilitySet[] {
+                    visibilitySet
+            };
         }
 
         // if fewer blocks are filled than necessary to block visibility between two faces, all faces are visible to each other
         if (this.filled < 256) {
-            return filledWith(true);
+            var visibilitySet = new VisibilitySet();
+            visibilitySet.setAll(true);
+            return new VisibilitySet[] {
+                    visibilitySet
+            };
         }
         
         // generate visibility data for each base perspective
-        var results = new VisibilitySet[BASE_PERSPECTIVES];
-        for (int i = 0; i < BASE_PERSPECTIVES; i++) {
+        var results = new VisibilitySet[DIRECTION_SETS.length];
+        for (int i = 0; i < DIRECTION_SETS.length; i++) {
             results[i] = resolveWithDirections(DIRECTION_SETS[i]);
         }
         

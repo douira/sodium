@@ -105,11 +105,9 @@ public class BuiltSectionInfo {
     private static BuiltSectionInfo createEmptyData() {
         VisibilitySet fullyVisible = new VisibilitySet();
         fullyVisible.add(EnumSet.allOf(Direction.class));
-        var occlusionData = new VisibilitySet[DirectionalVisGraph.BASE_PERSPECTIVES];
-        Arrays.fill(occlusionData, fullyVisible);
         
         BuiltSectionInfo.Builder meshInfo = new BuiltSectionInfo.Builder();
-        meshInfo.setOcclusionData(occlusionData);
+        meshInfo.setOcclusionData(new VisibilitySet[] { fullyVisible });
 
         return meshInfo.build();
     }

@@ -93,6 +93,10 @@ public class OcclusionCuller {
     }
 
     private static long joinVisibilityData(long[] visibilityDataSet, RenderSection section, Viewport viewport) {
+        if (visibilityDataSet.length == 1) {
+            return visibilityDataSet[0];
+        }
+        
         var transform = viewport.getTransform();
         
         // determine which base perspectives need to be combined based on the camera position relative to the section
