@@ -68,7 +68,6 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         ProfilerFiller profiler = Profiler.get();
         BuiltSectionInfo.Builder renderData = new BuiltSectionInfo.Builder();
         DirectionalVisGraph occluder = new DirectionalVisGraph();
-        VisGraph oldVisGraph = new VisGraph();
 
         ChunkBuildBuffers buffers = buildContext.buffers;
         buffers.init(renderData, this.render.getSectionIndex());
@@ -147,7 +146,6 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
                         if (blockState.isSolidRender()) {
                             occluder.setOpaque(localX, localY, localZ);
-                            oldVisGraph.setOpaque(blockPos);
                         }
                     }
                 }

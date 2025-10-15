@@ -28,7 +28,8 @@ public class OcclusionCuller {
                             Viewport viewport,
                             float searchDistance,
                             boolean useOcclusionCulling,
-                            int frame) {
+                            int frame)
+    {
         final var queues = this.queue;
         queues.reset();
 
@@ -47,7 +48,8 @@ public class OcclusionCuller {
                                      boolean useOcclusionCulling,
                                      int frame,
                                      ReadQueue<RenderSection> readQueue,
-                                     WriteQueue<RenderSection> writeQueue) {
+                                     WriteQueue<RenderSection> writeQueue)
+    {
         RenderSection section;
 
         while ((section = readQueue.dequeue()) != null) {
@@ -220,11 +222,11 @@ public class OcclusionCuller {
     private static int getOutwardDirections(SectionPos origin, RenderSection section) {
         int planes = 0;
 
-        planes |= section.getChunkX() <= origin.getX() ? 1 << GraphDirection.WEST : 0;
-        planes |= section.getChunkX() >= origin.getX() ? 1 << GraphDirection.EAST : 0;
+        planes |= section.getChunkX() <= origin.getX() ? 1 << GraphDirection.WEST  : 0;
+        planes |= section.getChunkX() >= origin.getX() ? 1 << GraphDirection.EAST  : 0;
 
-        planes |= section.getChunkY() <= origin.getY() ? 1 << GraphDirection.DOWN : 0;
-        planes |= section.getChunkY() >= origin.getY() ? 1 << GraphDirection.UP : 0;
+        planes |= section.getChunkY() <= origin.getY() ? 1 << GraphDirection.DOWN  : 0;
+        planes |= section.getChunkY() >= origin.getY() ? 1 << GraphDirection.UP    : 0;
 
         planes |= section.getChunkZ() <= origin.getZ() ? 1 << GraphDirection.NORTH : 0;
         planes |= section.getChunkZ() >= origin.getZ() ? 1 << GraphDirection.SOUTH : 0;
@@ -254,12 +256,8 @@ public class OcclusionCuller {
     private static int nearestToZero(int min, int max) {
         // this compiles to slightly better code than Math.min(Math.max(0, min), max)
         int clamped = 0;
-        if (min > 0) {
-            clamped = min;
-        }
-        if (max < 0) {
-            clamped = max;
-        }
+        if (min > 0) { clamped = min; }
+        if (max < 0) { clamped = max; }
         return clamped;
     }
 
@@ -277,7 +275,7 @@ public class OcclusionCuller {
 
     // this bigger chunk section size is only used for frustum-testing nearby sections with large models
     private static final float CHUNK_SECTION_SIZE_NEARBY = CHUNK_SECTION_RADIUS + 2.0f /* bigger model extent */ + 0.125f /* epsilon */;
-
+    
     public static boolean isWithinNearbySectionFrustum(Viewport viewport, RenderSection section) {
         return viewport.isBoxVisible(section.getCenterX(), section.getCenterY(), section.getCenterZ(),
                 CHUNK_SECTION_SIZE_NEARBY, CHUNK_SECTION_SIZE_NEARBY, CHUNK_SECTION_SIZE_NEARBY);
@@ -320,7 +318,8 @@ public class OcclusionCuller {
                       Viewport viewport,
                       float searchDistance,
                       boolean useOcclusionCulling,
-                      int frame) {
+                      int frame)
+    {
         var origin = viewport.getChunkCoord();
 
         if (origin.getY() < this.level.getMinSectionY()) {
@@ -378,7 +377,8 @@ public class OcclusionCuller {
                                         float searchDistance,
                                         int frame,
                                         int height,
-                                        int direction) {
+                                        int direction)
+    {
         var origin = viewport.getChunkCoord();
         var radius = Mth.floor(searchDistance / 16.0f);
 
