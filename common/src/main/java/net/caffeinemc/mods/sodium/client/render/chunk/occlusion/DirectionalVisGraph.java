@@ -81,6 +81,11 @@ public class DirectionalVisGraph  {
         var stackPos = new short[SIZE];
         var stackDirs = new byte[SIZE];
         for (int originDirection = 0; originDirection < GraphDirection.COUNT; originDirection++) {
+            // skip origin directions that are opposite the allowed step directions since they cannot lead to any visibility
+            if ((directionSet & (1 << GraphDirection.opposite(originDirection))) == 0) {
+                continue;
+            }
+            
             var minX = 0;
             var minY = 0;
             var minZ = 0;

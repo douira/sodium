@@ -101,7 +101,8 @@ public class OcclusionCuller {
         
         var transform = viewport.getTransform();
         
-        // determine which base perspectives need to be combined based on the camera position relative to the section
+        // determine which base perspectives need to be combined based on the camera position relative to the section.
+        // these bitmasks correspond to the base directions in DirectionalVisGraph.DIRECTION_SETS
         int directionSetsX = 0;
         if (transform.x >= section.getOriginX()) {
             directionSetsX = 0b00001111;
