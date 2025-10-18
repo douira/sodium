@@ -9,14 +9,18 @@ public class DirectionalVisGraph {
             // corresponding to GraphDirection from MSB to LSB:
             // east, west, south, north, up, down
 
-            0b010101, // 0: west, north, down
-            0b010110, // 1: west, north, up
-            0b011001, // 2: west, south, down
-            0b011010, // 3: west, south, up
-            0b100101, // 4: east, north, down
-            0b100110, // 5: east, north, up
-            0b101001, // 6: east, south, down
-            0b101010, // 7: east, south, up
+            //@formatter:off
+                   0b010101, // 0: west, north, down
+                   0b010110, // 1: west, north, up
+                   0b011001, // 2: west, south, down
+            -4, // 0b011010, // 3: west, south, up
+                   0b100101, // 4: east, north, down
+            -2, // 0b100110, // 5: east, north, up
+            -1, // 0b101001, // 6: east, south, down
+             0, // 0b101010, // 7: east, south, up
+            //@formatter:on
+            
+            // the index with which a perspective is symmetric is given as a negative value
     };
     private static final int DX = 1;
     private static final int DY = 16 * 16;
@@ -57,11 +61,21 @@ public class DirectionalVisGraph {
         }
 
         // generate visibility data for each base perspective
-        // TODO: entirely reuse half the results by mirroring them. a +X+Y+Z perspective taking steps only in negative directions is the same as a -X-Y-Z perspective taking steps only in positive directions since visibility is symmetric
         var results = new VisibilitySet[DIRECTION_SETS.length];
         for (int i = 0; i < DIRECTION_SETS.length; i++) {
+            var directionSet = DIRECTION_SETS[i];
+            
             // the direction set defines which directions can be taken as steps from the origin face
-            results[i] = resolveWithDirections(DIRECTION_SETS[i]);
+            if (directionSet > 0) {
+                results[i] = resolveWithDirections(directionSet);
+            }
+        }
+        
+        // generate results from for the symmetric perspectives
+        for (int i = 0; i < DIRECTION_SETS.length; i++) {
+            if (results[i] == null) {
+                results[i] = results[-DIRECTION_SETS[i]];
+            }
         }
 
         return results;
@@ -74,12 +88,12 @@ public class DirectionalVisGraph {
         int originDirections = (~directionSet) & GraphDirectionSet.ALL;
 
         // TODO: technically it can't actually get SIZE long. The real max length is the maximum path length through the cube without touching adjacent blocks (under certain direction ordering restrictions)
+
         var stackPos = new short[SIZE];
         var stackDirs = new byte[SIZE];
         for (int i = 0; i < 3; i++) {
             int originDirection = Integer.numberOfTrailingZeros(originDirections);
             originDirections &= ~(1 << originDirection);
-
 
             int minX = 0, minY = 0, minZ = 0;
             int maxX = 15, maxY = 15, maxZ = 15;
