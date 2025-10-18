@@ -129,12 +129,20 @@ public class OcclusionCuller {
         
         int directionSets = directionSetsX & directionSetsY & directionSetsZ;
         
-        // combine the relevant visibility data sets
+        // Combine the relevant visibility data sets.
+        // Since each perspective can be seen from two opposite sides, two bits in each mask are set.
         long visibilityData = 0L;
-        for (int i = 0; i < 8; i++) {
-            if ((directionSets & (1 << i)) != 0) {
-                visibilityData |= visibilityDataSet[i];
-            }
+        if ((directionSets & 0b10000001) != 0) {
+            visibilityData |= visibilityDataSet[0];
+        }
+        if ((directionSets & 0b01000010) != 0) {
+            visibilityData |= visibilityDataSet[1];
+        }
+        if ((directionSets & 0b00100100) != 0) {
+            visibilityData |= visibilityDataSet[2];
+        }
+        if ((directionSets & 0b00011000) != 0) {
+            visibilityData |= visibilityDataSet[3];
         }
         
         return visibilityData;

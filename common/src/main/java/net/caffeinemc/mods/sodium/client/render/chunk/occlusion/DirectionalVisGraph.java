@@ -5,29 +5,32 @@ import net.minecraft.client.renderer.chunk.VisibilitySet;
 
 public class DirectionalVisGraph {
     private static final int SIZE = 16 * 16 * 16;
-    private static final int[] DIRECTION_SETS = new int[] {
-            // corresponding to GraphDirection from MSB to LSB:
-            // east, west, south, north, up, down
+    private static final int STACK_SIZE = 3 * 16;
 
-            //@formatter:off
-                   0b010101, // 0: west, north, down
-                   0b010110, // 1: west, north, up
-                   0b011001, // 2: west, south, down
-            -4, // 0b011010, // 3: west, south, up
-                   0b100101, // 4: east, north, down
-            -2, // 0b100110, // 5: east, north, up
-            -1, // 0b101001, // 6: east, south, down
-             0, // 0b101010, // 7: east, south, up
-            //@formatter:on
-            
-            // the index with which a perspective is symmetric is given as a negative value
-    };
     private static final int DX = 1;
     private static final int DY = 16 * 16;
     private static final int DZ = 16;
+
     private static final int X_MASK = 0b1111;
     private static final int Y_MASK = 0b1111 << 8;
     private static final int Z_MASK = 0b1111 << 4;
+
+    private static final int[] DIRECTION_SETS = new int[] {
+            // corresponding to GraphDirection from MSB to LSB:
+            // east, west, south, north, up, down
+            // half of the directions are omitted since their visibility is the same as the opposite direction set
+
+            //@formatter:off
+            0b010101, // 0: west, north, down
+            0b010110, // 1: west, north, up
+            0b011001, // 2: west, south, down
+            // 0b011010, // 3: west, south, up
+            0b100101, // 4: east, north, down
+            // 0b100110, // 5: east, north, up
+            // 0b101001, // 6: east, south, down
+            // 0b101010, // 7: east, south, up
+            //@formatter:on
+    };
 
     private final BitArray blocks = new BitArray(SIZE);
     private int filled = 0;
@@ -63,19 +66,7 @@ public class DirectionalVisGraph {
         // generate visibility data for each base perspective
         var results = new VisibilitySet[DIRECTION_SETS.length];
         for (int i = 0; i < DIRECTION_SETS.length; i++) {
-            var directionSet = DIRECTION_SETS[i];
-            
-            // the direction set defines which directions can be taken as steps from the origin face
-            if (directionSet > 0) {
-                results[i] = resolveWithDirections(directionSet);
-            }
-        }
-        
-        // generate results from for the symmetric perspectives
-        for (int i = 0; i < DIRECTION_SETS.length; i++) {
-            if (results[i] == null) {
-                results[i] = results[-DIRECTION_SETS[i]];
-            }
+            results[i] = resolveWithDirections(DIRECTION_SETS[i]);
         }
 
         return results;
@@ -87,10 +78,8 @@ public class DirectionalVisGraph {
         // search starting at each face opposite an allowed step direction
         int originDirections = (~directionSet) & GraphDirectionSet.ALL;
 
-        // TODO: technically it can't actually get SIZE long. The real max length is the maximum path length through the cube without touching adjacent blocks (under certain direction ordering restrictions)
-
-        var stackPos = new short[SIZE];
-        var stackDirs = new byte[SIZE];
+        var stackPos = new short[STACK_SIZE];
+        var stackDirs = new byte[STACK_SIZE];
         for (int i = 0; i < 3; i++) {
             int originDirection = Integer.numberOfTrailingZeros(originDirections);
             originDirections &= ~(1 << originDirection);
