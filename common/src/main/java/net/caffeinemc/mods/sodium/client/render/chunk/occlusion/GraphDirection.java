@@ -9,8 +9,7 @@ public class GraphDirection {
     public static final int SOUTH   = 3;
     public static final int WEST    = 4;
     public static final int EAST    = 5;
-
-
+    
     public static final int COUNT   = 6;
 
     private static final Direction[] ENUMS;

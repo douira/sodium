@@ -3,14 +3,12 @@ package net.caffeinemc.mods.sodium.client.render.chunk.occlusion;
 import net.caffeinemc.mods.sodium.client.util.collections.BitArray;
 import net.minecraft.client.renderer.chunk.VisibilitySet;
 
-import java.util.Arrays;
-
-public class DirectionalVisGraph  {
+public class DirectionalVisGraph {
     private static final int SIZE = 16 * 16 * 16;
     private static final int[] DIRECTION_SETS = new int[] {
             // corresponding to GraphDirection from MSB to LSB:
             // east, west, south, north, up, down
-            
+
             0b010101, // 0: west, north, down
             0b010110, // 1: west, north, up
             0b011001, // 2: west, south, down
@@ -20,6 +18,12 @@ public class DirectionalVisGraph  {
             0b101001, // 6: east, south, down
             0b101010, // 7: east, south, up
     };
+    private static final int DX = 1;
+    private static final int DY = 16 * 16;
+    private static final int DZ = 16;
+    private static final int X_MASK = 0b1111;
+    private static final int Y_MASK = 0b1111 << 8;
+    private static final int Z_MASK = 0b1111 << 4;
 
     private final BitArray blocks = new BitArray(SIZE);
     private int filled = 0;
@@ -28,23 +32,11 @@ public class DirectionalVisGraph  {
         return x | (z << 4) | (y << 8);
     }
 
-    private static int getX(int index) {
-        return index & 15;
-    }
-
-    private static int getY(int index) {
-        return (index >> 8) & 15;
-    }
-
-    private static int getZ(int index) {
-        return (index >> 4) & 15;
-    }
-
     public void setOpaque(int x, int y, int z) {
         this.blocks.set(getIndex(x, y, z));
         this.filled++;
     }
-    
+
     public VisibilitySet[] resolve() {
         // if all blocks are filled, nothing is visible
         if (this.filled == SIZE) {
@@ -63,36 +55,34 @@ public class DirectionalVisGraph  {
                     visibilitySet
             };
         }
-        
+
         // generate visibility data for each base perspective
+        // TODO: entirely reuse half the results by mirroring them. a +X+Y+Z perspective taking steps only in negative directions is the same as a -X-Y-Z perspective taking steps only in positive directions since visibility is symmetric
         var results = new VisibilitySet[DIRECTION_SETS.length];
         for (int i = 0; i < DIRECTION_SETS.length; i++) {
+            // the direction set defines which directions can be taken as steps from the origin face
             results[i] = resolveWithDirections(DIRECTION_SETS[i]);
         }
-        
+
         return results;
     }
-    
+
     private VisibilitySet resolveWithDirections(int directionSet) {
         var visibilitySet = new VisibilitySet();
 
-        // DFS from each face, and going backwards in the direction of the origin face is not permitted
+        // search starting at each face opposite an allowed step direction
+        int originDirections = (~directionSet) & GraphDirectionSet.ALL;
+
         // TODO: technically it can't actually get SIZE long. The real max length is the maximum path length through the cube without touching adjacent blocks (under certain direction ordering restrictions)
         var stackPos = new short[SIZE];
         var stackDirs = new byte[SIZE];
-        for (int originDirection = 0; originDirection < GraphDirection.COUNT; originDirection++) {
-            // skip origin directions that are opposite the allowed step directions since they cannot lead to any visibility
-            if ((directionSet & (1 << GraphDirection.opposite(originDirection))) == 0) {
-                continue;
-            }
-            
-            var minX = 0;
-            var minY = 0;
-            var minZ = 0;
-            var maxX = 15;
-            var maxY = 15;
-            var maxZ = 15;
+        for (int i = 0; i < 3; i++) {
+            int originDirection = Integer.numberOfTrailingZeros(originDirections);
+            originDirections &= ~(1 << originDirection);
 
+
+            int minX = 0, minY = 0, minZ = 0;
+            int maxX = 15, maxY = 15, maxZ = 15;
             switch (originDirection) {
                 case GraphDirection.DOWN -> maxY = 0;
                 case GraphDirection.UP -> minY = 15;
@@ -102,12 +92,14 @@ public class DirectionalVisGraph  {
                 case GraphDirection.EAST -> minX = 15;
             }
 
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    for (int x = minX; x <= maxX; x++) {
-                        int index = getIndex(x, y, z);
-                        if (!this.blocks.get(index)) {
-                            search(visibilitySet, stackPos, stackDirs, originDirection, directionSet, x, y, z);
+            var visited = this.blocks.copy();
+
+            for (int x = minX; x <= maxX; x++) {
+                for (int y = minY; y <= maxY; y++) {
+                    for (int z = minZ; z <= maxZ; z++) {
+                        int originIndex = getIndex(x, y, z);
+                        if (!visited.getAndSet(originIndex)) {
+                            search(visited, visibilitySet, stackPos, stackDirs, originDirection, directionSet, originIndex);
                         }
                     }
                 }
@@ -117,56 +109,66 @@ public class DirectionalVisGraph  {
         return visibilitySet;
     }
 
-    private void search(VisibilitySet visibilitySet, short[] stackPos, byte[] stackDirs, int originFace, int directionSet, int startX, int startY, int startZ) {
-        var visited = this.blocks.copy();
-
+    private void search(BitArray visited, VisibilitySet visibilitySet, short[] stackPos, byte[] stackDirs, int originFace, int directionSet, int originIndex) {
         int stackSize = 0;
-        int originIndex = getIndex(startX, startY, startZ);
+
         stackPos[stackSize++] = (short) originIndex;
-        stackDirs[0] = -1;
-        visited.set(originIndex);
+        stackDirs[0] = (byte) directionSet;
 
         // the faces that we cannot move towards are the ones that cannot become visible because of teh perspective of the camera. This always includes the origin face.
         int connectedFaces = GraphDirectionSet.of(~directionSet);
 
         while (stackSize > 0) {
             int stackIndex = stackSize - 1;
-
-            int currentIndex = stackPos[stackIndex];
-            int currentX = getX(currentIndex);
-            int currentY = getY(currentIndex);
-            int currentZ = getZ(currentIndex);
-            int completedDir = stackDirs[stackIndex];
-
-            int nextDir = completedDir + 1;
+            int remainingDirs = stackDirs[stackIndex];
 
             // backtrack when all directions have been tried
-            if (nextDir == GraphDirection.COUNT) {
+            if (remainingDirs == 0) {
                 stackSize--;
                 continue;
             }
 
-            stackDirs[stackIndex] = (byte) nextDir;
+            int nextDir = Integer.numberOfTrailingZeros(remainingDirs);
+            stackDirs[stackIndex] &= (byte) ~(1 << nextDir);
 
-            // skip disallowed directions
-            if ((directionSet & (1 << nextDir)) == 0) {
-                // fast path backtracking when the last direction is skipped
-                if (nextDir + 1 == GraphDirection.COUNT) {
-                    stackSize--;
+            int currentIndex = stackPos[stackIndex];
+
+            int neighborIndex;
+            boolean reachedFace;
+            switch (nextDir) {
+                case GraphDirection.DOWN -> {
+                    neighborIndex = currentIndex - DY;
+                    reachedFace = (neighborIndex & Y_MASK) == Y_MASK;
                 }
-                continue;
+                case GraphDirection.UP -> {
+                    neighborIndex = currentIndex + DY;
+                    reachedFace = (neighborIndex & Y_MASK) == 0;
+                }
+                case GraphDirection.NORTH -> {
+                    neighborIndex = currentIndex - DZ;
+                    reachedFace = (neighborIndex & Z_MASK) == Z_MASK;
+                }
+                case GraphDirection.SOUTH -> {
+                    neighborIndex = currentIndex + DZ;
+                    reachedFace = (neighborIndex & Z_MASK) == 0;
+                }
+                case GraphDirection.WEST -> {
+                    neighborIndex = currentIndex - DX;
+                    reachedFace = (neighborIndex & X_MASK) == X_MASK;
+                }
+                case GraphDirection.EAST -> {
+                    neighborIndex = currentIndex + DX;
+                    reachedFace = (neighborIndex & X_MASK) == 0;
+                }
+                default -> throw new IllegalStateException("Unexpected graph direction: " + nextDir);
             }
 
-            int neighborX = currentX + GraphDirection.x(nextDir);
-            int neighborY = currentY + GraphDirection.y(nextDir);
-            int neighborZ = currentZ + GraphDirection.z(nextDir);
-
             // check reaching the edge of the chunk
-            if (neighborX < 0 || neighborX >= 16 || neighborY < 0 || neighborY >= 16 || neighborZ < 0 || neighborZ >= 16) {
+            if (reachedFace) {
                 // reached the edge, mark visibility between origin face and this face
                 connectedFaces |= GraphDirectionSet.of(nextDir);
 
-                // stop searching if all potentially reachable faces are connected
+                // stop searching if all potentially reachable faces have been reached
                 if (connectedFaces == directionSet) {
                     break;
                 }
@@ -174,7 +176,6 @@ public class DirectionalVisGraph  {
                 continue;
             }
 
-            int neighborIndex = getIndex(neighborX, neighborY, neighborZ);
             if (visited.getAndSet(neighborIndex)) {
                 // already visited or opaque
                 continue;
@@ -182,7 +183,7 @@ public class DirectionalVisGraph  {
 
             // visit the neighbor
             stackPos[stackSize] = (short) neighborIndex;
-            stackDirs[stackSize] = -1;
+            stackDirs[stackSize] = (byte) directionSet;
             stackSize++;
         }
 
