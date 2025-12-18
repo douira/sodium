@@ -1,9 +1,10 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.region;
 
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
+import net.caffeinemc.mods.sodium.client.gl.arena.ArenaAllocator;
 import net.caffeinemc.mods.sodium.client.gl.arena.GlBufferArena;
-import net.caffeinemc.mods.sodium.client.gl.arena.staging.StagingBuffer;
-import net.caffeinemc.mods.sodium.client.gl.buffer.*;
+import net.caffeinemc.mods.sodium.client.gl.buffer.GlBuffer;
+import net.caffeinemc.mods.sodium.client.gl.buffer.GlBufferStreamer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.gl.device.MultiDrawBatch;
 import net.caffeinemc.mods.sodium.client.gl.tessellation.GlTessellation;
@@ -46,7 +47,7 @@ public class RenderRegion {
         Validate.isTrue(MathUtil.isPowerOfTwo(REGION_LENGTH));
     }
 
-    private final StagingBuffer stagingBuffer;
+    private final ArenaAllocator arenaAllocator;
     private final int x, y, z;
 
     private final ChunkRenderList renderList;
@@ -60,13 +61,13 @@ public class RenderRegion {
 
     private final Map<TerrainRenderPass, MultiDrawBatch> cachedBatches = new Reference2ReferenceOpenHashMap<>();
 
-    public RenderRegion(int x, int y, int z, StagingBuffer stagingBuffer) {
+    public RenderRegion(int x, int y, int z, ArenaAllocator arenaAllocator) {
         this.x = x;
         this.y = y;
         this.z = z;
         this.creationTime = System.currentTimeMillis();
 
-        this.stagingBuffer = stagingBuffer;
+        this.arenaAllocator = arenaAllocator;
         this.renderList = new ChunkRenderList(this);
     }
 
@@ -240,7 +241,7 @@ public class RenderRegion {
 
     public DeviceResources createResources(CommandList commandList) {
         if (this.resources == null) {
-            this.resources = new DeviceResources(commandList, this.stagingBuffer);
+            this.resources = new DeviceResources(commandList, this);
         }
 
         return this.resources;
@@ -272,16 +273,16 @@ public class RenderRegion {
          * two can't easily be combined because integers and vertices require different
          * amounts of data which makes the returned offsets incompatible.
          */
-        public DeviceResources(CommandList commandList, StagingBuffer stagingBuffer) {
+        public DeviceResources(CommandList commandList, RenderRegion region) {
             int stride = ChunkMeshFormats.COMPACT.getVertexFormat().getStride();
 
-            this.geometryArena = new GlBufferArena(commandList, REGION_SIZE * SECTION_VERTEX_COUNT_ESTIMATE, stride, stagingBuffer);
+            this.geometryArena = region.arenaAllocator.createArena(commandList, region, REGION_SIZE * SECTION_VERTEX_COUNT_ESTIMATE, stride);
             this.chunkFades = new GlBufferStreamer(commandList, REGION_SIZE, Integer.BYTES);
-            this.indexArena = new GlBufferArena(commandList, REGION_SIZE * SECTION_INDEX_COUNT_ESTIMATE, Integer.BYTES, stagingBuffer);
+            this.indexArena = region.arenaAllocator.createArena(commandList, region, REGION_SIZE * SECTION_INDEX_COUNT_ESTIMATE, Integer.BYTES);
         }
 
         public void writeMeshTimes(int sectionIndex, int millisecondToCompare) {
-            chunkFades.writeData(sectionIndex, millisecondToCompare);
+            this.chunkFades.writeData(sectionIndex, millisecondToCompare);
         }
 
         public void updateTessellation(CommandList commandList, GlTessellation tessellation) {

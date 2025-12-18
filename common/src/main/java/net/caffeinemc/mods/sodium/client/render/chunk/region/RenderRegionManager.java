@@ -4,6 +4,7 @@ import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceMap;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
+import net.caffeinemc.mods.sodium.client.gl.arena.ArenaAllocator;
 import net.caffeinemc.mods.sodium.client.gl.arena.PendingUpload;
 import net.caffeinemc.mods.sodium.client.gl.arena.staging.FallbackStagingBuffer;
 import net.caffeinemc.mods.sodium.client.gl.arena.staging.MappedStagingBuffer;
@@ -23,15 +24,20 @@ import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import org.jspecify.annotations.NonNull;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
 
 public class RenderRegionManager {
     private final Long2ReferenceOpenHashMap<RenderRegion> regions = new Long2ReferenceOpenHashMap<>();
 
     private final StagingBuffer stagingBuffer;
+    private final ArenaAllocator arenaAllocator;
 
     public RenderRegionManager(CommandList commandList) {
         this.stagingBuffer = createStagingBuffer(commandList);
+        this.arenaAllocator = new ArenaAllocator(this.stagingBuffer);
     }
 
     public void update() {
@@ -222,6 +228,8 @@ public class RenderRegionManager {
 
         this.regions.clear();
         this.stagingBuffer.delete(commandList);
+
+        this.arenaAllocator.delete(commandList);
     }
 
     public Collection<RenderRegion> getLoadedRegions() {
@@ -244,7 +252,7 @@ public class RenderRegionManager {
         var instance = this.regions.get(key);
 
         if (instance == null) {
-            this.regions.put(key, instance = new RenderRegion(x, y, z, this.stagingBuffer));
+            this.regions.put(key, instance = new RenderRegion(x, y, z, this.arenaAllocator));
         }
 
         return instance;

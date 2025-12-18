@@ -2,7 +2,6 @@ package net.caffeinemc.mods.sodium.client.gl.arena;
 
 import net.caffeinemc.mods.sodium.client.gl.arena.staging.StagingBuffer;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlBuffer;
-import net.caffeinemc.mods.sodium.client.gl.buffer.GlBufferUsage;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlMutableBuffer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 
@@ -22,11 +21,8 @@ public class GlBufferArena {
     public static final float FEW_SEGMENTS_GROWTH_FACTOR = 1.5f;
     // factor to use when we are allocating with an expected size
     public static final float EXPECTED_SIZE_TARGET_FACTOR = 1.5f;
-    // how much bigger than requested a buffer can be to be considered for reuse
-    public static final float MAX_BUFFER_REUSE_SIZE_FACTOR = 1.4f;
 
-    private static final GlBufferUsage BUFFER_USAGE = GlBufferUsage.STATIC_DRAW;
-
+    private final ArenaAllocator allocator;
     private final StagingBuffer stagingBuffer;
     private GlMutableBuffer arenaBuffer;
 
@@ -38,21 +34,15 @@ public class GlBufferArena {
 
     private final int stride;
 
-    private static final GlMutableBuffer[] freeBuffers = new GlMutableBuffer[8];
-    private static int freeBufferCount = 0;
-
-    public GlBufferArena(CommandList commands, int initialCapacity, int stride, StagingBuffer stagingBuffer) {
-        this.capacity = initialCapacity;
-
+    GlBufferArena(ArenaAllocator allocator, GlMutableBuffer initialBuffer, long capacity, int stride) {
+        this.allocator = allocator;
+        this.stagingBuffer = allocator.stagingBuffer;
+        this.arenaBuffer = initialBuffer;
+        this.capacity = capacity;
         this.stride = stride;
 
         this.head = new GlBufferSegment(this, 0, this.capacity);
         this.head.setFree(true);
-
-        this.arenaBuffer = getBufferOfSizeAtLeast(commands, this.capacity * stride);
-        this.capacity = this.arenaBuffer.getSize() / stride;
-
-        this.stagingBuffer = stagingBuffer;
     }
 
     private void resize(CommandList commandList, long newCapacity) {
@@ -126,57 +116,6 @@ public class GlBufferArena {
         return pendingCopies;
     }
 
-    private static GlMutableBuffer getBufferOfSizeAtLeast(CommandList commandList, long size) {
-        GlMutableBuffer buffer = null;
-
-        if (freeBufferCount > 0) {
-            // get any buffer of at least the requested size but at most MAX_BUFFER_REUSE_SIZE_FACTOR larger
-            long maxAcceptableSize = (long) (size * MAX_BUFFER_REUSE_SIZE_FACTOR);
-
-            // iterate buffers to get the smallest acceptable one
-            int candidateIndex = -1;
-            for (int i = 0; i < freeBuffers.length; i++) {
-                GlMutableBuffer freeBuffer = freeBuffers[i];
-                if (freeBuffer != null) {
-                    long testSize = freeBuffer.getSize();
-                    if (testSize >= size && testSize <= maxAcceptableSize &&
-                            (buffer == null || testSize < buffer.getSize())) {
-                        candidateIndex = i;
-                        buffer = freeBuffer;
-                    }
-                }
-            }
-            if (buffer != null) {
-                freeBuffers[candidateIndex] = null;
-                freeBufferCount--;
-            }
-        }
-
-        if (buffer == null) {
-            buffer = commandList.createMutableBuffer();
-            commandList.allocateStorage(buffer, size, BUFFER_USAGE);
-        }
-        return buffer;
-    }
-
-    private static void releaseBufferForReuse(CommandList commandList, GlMutableBuffer buffer) {
-        // find an empty slot if there is one
-        if (freeBufferCount < freeBuffers.length) {
-            for (int i = 0; i < freeBuffers.length; i++) {
-                if (freeBuffers[i] == null) {
-                    freeBuffers[i] = buffer;
-                    freeBufferCount++;
-                    return;
-                }
-            }
-        }
-
-        // evict randomly if no empty slot available
-        int evictIndex = (int) (Math.random() * freeBuffers.length);
-        commandList.deleteBuffer(freeBuffers[evictIndex]);
-        freeBuffers[evictIndex] = buffer;
-    }
-
     private void transferSegments(CommandList commandList, Collection<PendingBufferCopyCommand> list, long capacity) {
         long bufferSize = capacity * this.stride;
         if (bufferSize >= (1L << 32)) {
@@ -184,7 +123,7 @@ public class GlBufferArena {
         }
 
         GlMutableBuffer srcBufferObj = this.arenaBuffer;
-        GlMutableBuffer dstBufferObj = getBufferOfSizeAtLeast(commandList, bufferSize);
+        GlMutableBuffer dstBufferObj = this.allocator.getBufferOfSizeAtLeast(commandList, bufferSize);
 
         for (PendingBufferCopyCommand cmd : list) {
             commandList.copyBufferSubData(srcBufferObj, dstBufferObj,
@@ -193,7 +132,7 @@ public class GlBufferArena {
                     cmd.getLength() * this.stride);
         }
 
-        releaseBufferForReuse(commandList, srcBufferObj);
+       this.allocator.releaseBufferForReuse(commandList, srcBufferObj);
 
         this.arenaBuffer = dstBufferObj;
         
