@@ -70,7 +70,7 @@ public class RegionOwnedAllocator implements AllocatorBase {
     }
 
     public boolean isSingleOwner() {
-        return !(this.backingArena instanceof YoungGenGlBufferArena);
+        return !(this.backingArena instanceof SharedGlBufferArena);
     }
 
     public void notifyBufferChanged(CommandList commandList) {

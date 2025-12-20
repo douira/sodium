@@ -13,8 +13,8 @@ import java.util.function.Consumer;
 public class ArenaAggregator {
     // how much bigger than requested a buffer can be to be considered for reuse
     public static final float MAX_BUFFER_REUSE_SIZE_FACTOR = 1.4f;
-    private static final long YOUNG_GEN_GEOMETRY_SIZE = 500 * 1024L * 1024L;
-    private static final long YOUNG_GEN_INDEX_SIZE = 50 * 1024L * 1024L;
+    private static final long SHARED_GEOMETRY_SIZE = 500 * 1024L * 1024L;
+    private static final long SHARED_INDEX_SIZE = 50 * 1024L * 1024L;
 
     private static final GlBufferUsage BUFFER_USAGE = GlBufferUsage.STATIC_DRAW;
 
@@ -22,28 +22,28 @@ public class ArenaAggregator {
     private final GlMutableBuffer[] freeBuffers = new GlMutableBuffer[8];
     private static int freeBufferCount = 0;
 
-    private final Int2ReferenceArrayMap<YoungGenGlBufferArena> youngGenArenas = new Int2ReferenceArrayMap<>();
+    private final Int2ReferenceArrayMap<SharedGlBufferArena> sharedArenas = new Int2ReferenceArrayMap<>();
 
     public ArenaAggregator(StagingBuffer stagingBuffer) {
         this.stagingBuffer = stagingBuffer;
     }
 
     public RegionOwnedAllocator createOwnedGeometryAllocator(CommandList commands, RenderRegion region, int stride, Consumer<CommandList> onBufferChange) {
-        return createOwnedAllocator(commands, region, (int) YOUNG_GEN_GEOMETRY_SIZE, stride, onBufferChange);
+        return createOwnedAllocator(commands, region, (int) SHARED_GEOMETRY_SIZE, stride, onBufferChange);
     }
 
     public RegionOwnedAllocator createOwnedIndexAllocator(CommandList commands, RenderRegion region, int stride, Consumer<CommandList> onBufferChange) {
-        return createOwnedAllocator(commands, region, (int) YOUNG_GEN_INDEX_SIZE, stride, onBufferChange);
+        return createOwnedAllocator(commands, region, (int) SHARED_INDEX_SIZE, stride, onBufferChange);
     }
 
     private RegionOwnedAllocator createOwnedAllocator(CommandList commands, RenderRegion region, int bytes, int stride, Consumer<CommandList> onBufferChange) {
-        // find or create young gen arena for this stride
-        YoungGenGlBufferArena youngGenArena = this.youngGenArenas.get(stride);
-        if (youngGenArena == null) {
-            youngGenArena = createYoungGenArenaOfSizeAtLeast(commands, bytes, stride);
-            this.youngGenArenas.put(stride, youngGenArena);
+        // find or create shared arena for this stride
+        SharedGlBufferArena sharedArena = this.sharedArenas.get(stride);
+        if (sharedArena == null) {
+            sharedArena = createSharedArenaOfSizeAtLeast(commands, bytes, stride);
+            this.sharedArenas.put(stride, sharedArena);
         }
-        return new RegionOwnedAllocator(region, onBufferChange, youngGenArena);
+        return new RegionOwnedAllocator(region, onBufferChange, sharedArena);
     }
 
     GlBufferArena createArenaOfSizeAtLeast(CommandList commandList, long bytes, int stride) {
@@ -52,10 +52,10 @@ public class ArenaAggregator {
         return new GlBufferArena(this, buffer, capacity, stride);
     }
 
-    YoungGenGlBufferArena createYoungGenArenaOfSizeAtLeast(CommandList commandList, long bytes, int stride) {
+    SharedGlBufferArena createSharedArenaOfSizeAtLeast(CommandList commandList, long bytes, int stride) {
         GlMutableBuffer buffer = getBufferOfSizeAtLeast(commandList, bytes);
         long capacity = buffer.getSize() / stride;
-        return new YoungGenGlBufferArena(this, buffer, capacity, stride);
+        return new SharedGlBufferArena(this, buffer, capacity, stride);
     }
 
     GlMutableBuffer getBufferOfSizeAtLeast(CommandList commandList, long size) {
@@ -119,25 +119,25 @@ public class ArenaAggregator {
         }
         freeBufferCount = 0;
 
-        for (YoungGenGlBufferArena arena : this.youngGenArenas.values()) {
+        for (SharedGlBufferArena arena : this.sharedArenas.values()) {
             arena.deleteShared(commandList);
         }
-        this.youngGenArenas.clear();
+        this.sharedArenas.clear();
     }
 
     public long getGeometryDeviceUsedMemory() {
-        var arena = this.youngGenArenas.get(ChunkMeshFormats.COMPACT.getVertexFormat().getStride());
+        var arena = this.sharedArenas.get(ChunkMeshFormats.COMPACT.getVertexFormat().getStride());
         return arena == null ? 0 : arena.getDeviceUsedMemory();
     }
 
     public long getIndexDeviceUsedMemory() {
-        var arena = this.youngGenArenas.get(Integer.BYTES);
+        var arena = this.sharedArenas.get(Integer.BYTES);
         return arena == null ? 0 : arena.getDeviceUsedMemory();
     }
 
     public long getGeometryDeviceAllocatedMemory() {
         long allocated = 0;
-        var arena = this.youngGenArenas.get(ChunkMeshFormats.COMPACT.getVertexFormat().getStride());
+        var arena = this.sharedArenas.get(ChunkMeshFormats.COMPACT.getVertexFormat().getStride());
         if (arena != null) {
             allocated += arena.getDeviceAllocatedMemory();
         }
@@ -151,11 +151,11 @@ public class ArenaAggregator {
     }
 
     public long getIndexDeviceAllocatedMemory() {
-        var arena = this.youngGenArenas.get(Integer.BYTES);
+        var arena = this.sharedArenas.get(Integer.BYTES);
         return arena == null ? 0 : arena.getDeviceAllocatedMemory();
     }
 
     public int getBufferCount() {
-        return this.youngGenArenas.size() + freeBufferCount;
+        return this.sharedArenas.size() + freeBufferCount;
     }
 }
