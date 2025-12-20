@@ -126,15 +126,21 @@ public class ArenaAggregator {
     }
 
     public long getGeometryDeviceUsedMemory() {
-        return this.youngGenArenas.get(ChunkMeshFormats.COMPACT.getVertexFormat().getStride()).getDeviceUsedMemory();
+        var arena = this.youngGenArenas.get(ChunkMeshFormats.COMPACT.getVertexFormat().getStride());
+        return arena == null ? 0 : arena.getDeviceUsedMemory();
     }
 
     public long getIndexDeviceUsedMemory() {
-        return this.youngGenArenas.get(Integer.BYTES).getDeviceUsedMemory();
+        var arena = this.youngGenArenas.get(Integer.BYTES);
+        return arena == null ? 0 : arena.getDeviceUsedMemory();
     }
 
     public long getGeometryDeviceAllocatedMemory() {
-        long allocated = this.youngGenArenas.get(ChunkMeshFormats.COMPACT.getVertexFormat().getStride()).getDeviceAllocatedMemory();
+        long allocated = 0;
+        var arena = this.youngGenArenas.get(ChunkMeshFormats.COMPACT.getVertexFormat().getStride());
+        if (arena != null) {
+            allocated += arena.getDeviceAllocatedMemory();
+        }
 
         for (GlMutableBuffer buffer : this.freeBuffers) {
             if (buffer != null) {
@@ -145,7 +151,8 @@ public class ArenaAggregator {
     }
 
     public long getIndexDeviceAllocatedMemory() {
-        return this.youngGenArenas.get(Integer.BYTES).getDeviceAllocatedMemory();
+        var arena = this.youngGenArenas.get(Integer.BYTES);
+        return arena == null ? 0 : arena.getDeviceAllocatedMemory();
     }
 
     public int getBufferCount() {
