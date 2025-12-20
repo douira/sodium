@@ -1,6 +1,7 @@
 package net.caffeinemc.mods.sodium.client.gl.arena;
 
 import it.unimi.dsi.fastutil.longs.Long2ReferenceAVLTreeMap;
+import it.unimi.dsi.fastutil.longs.Long2ReferenceRBTreeMap;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlMutableBuffer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 
@@ -9,7 +10,7 @@ import java.util.List;
 
 public class YoungGenGlBufferArena extends GlBufferArena {
     Long2ReferenceAVLTreeMap<RegionOwnedAllocator> ownersByUsed = new Long2ReferenceAVLTreeMap<>();
-    Long2ReferenceAVLTreeMap<GlBufferSegment> freeSegmentsByLength = new Long2ReferenceAVLTreeMap<>(Long::compareUnsigned);
+    Long2ReferenceRBTreeMap<GlBufferSegment> freeSegmentsByLength = new Long2ReferenceRBTreeMap<>(Long::compareUnsigned);
 
     YoungGenGlBufferArena(ArenaAggregator allocator, GlMutableBuffer initialBuffer, long capacity, int stride) {
         super(allocator, initialBuffer, capacity, stride);
@@ -88,15 +89,22 @@ public class YoungGenGlBufferArena extends GlBufferArena {
 
     @Override
     GlBufferSegment findFree(int size) {
+//        var lastKey = this.freeSegmentsByLength.lastLongKey();
+//        if (lastKey >>> 32 < (long) size) {
+//            return null;
+//        }
+//        return this.freeSegmentsByLength.remove(lastKey);
         var map = this.freeSegmentsByLength.tailMap((long) size << 32);
         if (map.isEmpty()) {
             return null;
         }
-        return map.pollFirstEntry().getValue();
+        return map.pollLastEntry().getValue();
     }
 
     @Override
     GlBufferSegment alloc(int size, RegionOwnedAllocator owner) {
+        this.checkAssertions();
+
         // find a free segment, this segment is already removed from the free list
         GlBufferSegment a = this.findFree(size);
 
@@ -207,9 +215,9 @@ public class YoungGenGlBufferArena extends GlBufferArena {
 
     private List<GlBufferSegment> extractAllSegmentsOwnedBy(RegionOwnedAllocator owner, AllocatorBase newAllocator) {
         ArrayList<GlBufferSegment> extractedSegments = new ArrayList<>();
-        long extractedTotalSize = 0;
         GlBufferSegment previousExtracted = null;
         GlBufferSegment current = this.head;
+        this.checkAssertions();
 
         // extract segments owned by the specified owner, patching links of the segments that are not extracted, and correcting the links on the extracted segments to point to each other
         while (current != null) {
@@ -221,7 +229,9 @@ public class YoungGenGlBufferArena extends GlBufferArena {
 
                 extractedSegments.add(current);
                 current.setAllocator(newAllocator);
-                extractedTotalSize += current.getLength();
+                this.used -= current.getLength();
+
+                this.checkAssertions();
 
                 // link extracted segments together
                 if (previousExtracted != null) {
@@ -236,7 +246,6 @@ public class YoungGenGlBufferArena extends GlBufferArena {
             current = next;
         }
 
-        this.used -= extractedTotalSize;
         return extractedSegments;
     }
 

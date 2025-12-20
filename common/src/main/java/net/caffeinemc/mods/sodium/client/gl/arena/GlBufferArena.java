@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 public class GlBufferArena implements AllocatorBase {
-    static final boolean CHECK_ASSERTIONS = false;
+    static final boolean CHECK_ASSERTIONS = true;
 
     // how many segments we require to be present before we calculate an average size
     public static final int MIN_SEGMENTS_FOR_AVG = 16;
@@ -448,6 +448,18 @@ public class GlBufferArena implements AllocatorBase {
                         throw new IllegalStateException("segment.free && segment.next.free: not merged consecutive segments");
                     }
                 }
+
+                if (next.getPrev() != seg) {
+                    throw new IllegalStateException("segment.next.prev != segment: broken linkage");
+                }
+
+                if (next == seg) {
+                    throw new IllegalStateException("segment.next == segment: infinite loop");
+                }
+
+                if (next == this.head) {
+                    throw new IllegalStateException("segment.next == arena.head: infinite loop");
+                }
             }
 
             GlBufferSegment prev = seg.getPrev();
@@ -463,6 +475,10 @@ public class GlBufferArena implements AllocatorBase {
                     if (prev.getPrev().isFree()) {
                         throw new IllegalStateException("segment.free && segment.prev.free: not merged consecutive segments");
                     }
+                }
+
+                if (prev.getNext() != seg) {
+                    throw new IllegalStateException("segment.prev.next != segment: broken linkage");
                 }
             }
 
