@@ -9,9 +9,23 @@ import java.util.List;
 
 public class YoungGenGlBufferArena extends GlBufferArena {
     Long2ReferenceAVLTreeMap<RegionOwnedAllocator> ownersByUsed = new Long2ReferenceAVLTreeMap<>();
+    Long2ReferenceAVLTreeMap<GlBufferSegment> freeSegmentsByLength = new Long2ReferenceAVLTreeMap<>(Long::compareUnsigned);
 
     YoungGenGlBufferArena(ArenaAggregator allocator, GlMutableBuffer initialBuffer, long capacity, int stride) {
         super(allocator, initialBuffer, capacity, stride);
+        this.addFreeSegment(this.head);
+    }
+
+    private static long makeSegmentKey(GlBufferSegment segment) {
+        return (segment.getLength() << 32) | segment.getOffset();
+    }
+
+    private void addFreeSegment(GlBufferSegment segment) {
+        this.freeSegmentsByLength.put(makeSegmentKey(segment), segment);
+    }
+
+    private void removeFreeSegment(GlBufferSegment segment) {
+        this.freeSegmentsByLength.remove(makeSegmentKey(segment));
     }
 
     @Override
@@ -21,6 +35,105 @@ public class YoungGenGlBufferArena extends GlBufferArena {
 
     public void deleteShared(CommandList commands) {
         super.deleteSingleOwner(commands);
+    }
+
+    @Override
+    public void free(GlBufferSegment entry) {
+        if (entry.isFree()) {
+            throw new IllegalStateException("Already freed");
+        }
+
+        var owner = entry.getOwner();
+        entry.setFree();
+
+        this.updateUsed(-entry.getLength(), owner);
+
+        GlBufferSegment next = entry.getNext();
+        boolean nextFree = next != null && next.isFree();
+        GlBufferSegment prev = entry.getPrev();
+        boolean prevFree = prev != null && prev.isFree();
+
+        // both free, merge with both
+        if (nextFree && prevFree) {
+            this.removeFreeSegment(prev);
+            this.removeFreeSegment(next);
+            prev.setLength(prev.getLength() + entry.getLength() + next.getLength());
+            prev.setNext(next.getNext());
+            if (next.getNext() != null) {
+                next.getNext().setPrev(prev);
+            }
+            this.addFreeSegment(prev);
+        } else if (nextFree) {
+            this.removeFreeSegment(next);
+            entry.setLength(entry.getLength() + next.getLength());
+            entry.setNext(next.getNext());
+            if (next.getNext() != null) {
+                next.getNext().setPrev(entry);
+            }
+            this.addFreeSegment(entry);
+        } else if (prevFree) {
+            this.removeFreeSegment(prev);
+            prev.setLength(prev.getLength() + entry.getLength());
+            prev.setNext(entry.getNext());
+            if (entry.getNext() != null) {
+                entry.getNext().setPrev(prev);
+            }
+            this.addFreeSegment(prev);
+        } else {
+            this.addFreeSegment(entry);
+        }
+
+        this.checkAssertions();
+    }
+
+    @Override
+    GlBufferSegment findFree(int size) {
+        var map = this.freeSegmentsByLength.tailMap((long) size << 32);
+        if (map.isEmpty()) {
+            return null;
+        }
+        return map.pollFirstEntry().getValue();
+    }
+
+    @Override
+    GlBufferSegment alloc(int size, RegionOwnedAllocator owner) {
+        // find a free segment, this segment is already removed from the free list
+        GlBufferSegment a = this.findFree(size);
+
+        if (a == null) {
+            return null;
+        }
+
+        GlBufferSegment result;
+
+        // exact fit
+        if (a.getLength() == size) {
+            a.setOwner(owner);
+
+            result = a;
+        }
+        // free space is larger than requested, return new segment at end of free space
+        else {
+            GlBufferSegment b = new GlBufferSegment(this, owner, a.getEnd() - size, size);
+            b.setNext(a.getNext());
+            b.setPrev(a);
+
+            if (b.getNext() != null) {
+                b.getNext().setPrev(b);
+            }
+
+            a.setLength(a.getLength() - size);
+            a.setNext(b);
+
+            this.addFreeSegment(a);
+
+            result = b;
+        }
+
+        this.updateUsed(result.getLength(), owner);
+        this.checkAssertions();
+
+        return result;
     }
 
     @Override
@@ -136,18 +249,22 @@ public class YoungGenGlBufferArena extends GlBufferArena {
             if (next == null) {
                 // new free head
                 this.head = GlBufferSegment.createFreeSegment(this, 0, current.getLength());
+                this.addFreeSegment(this.head);
             }
             // next is free, expand it
             else if (next.isFree()) {
                 this.head = next;
                 next.setOffset(0);
+                this.removeFreeSegment(next);
                 next.setLength(next.getLength() + current.getLength());
+                this.addFreeSegment(next);
             }
             // next is not free, create new free segment as head
             else {
                 this.head = GlBufferSegment.createFreeSegment(this, 0, current.getLength());
                 this.head.setNext(next);
                 next.setPrev(this.head);
+                this.addFreeSegment(this.head);
             }
         }
         // current is tail
@@ -156,38 +273,47 @@ public class YoungGenGlBufferArena extends GlBufferArena {
 
             // prev is free, expand it
             if (prev.isFree()) {
+                this.removeFreeSegment(prev);
                 prev.setLength(prev.getLength() + current.getLength());
                 prev.setNext(null);
+                this.addFreeSegment(prev);
             }
             // prev is not free, create new free segment as tail
             else {
                 GlBufferSegment newFreeTail = GlBufferSegment.createFreeSegment(this, current.getOffset(), current.getLength());
                 prev.setNext(newFreeTail);
                 newFreeTail.setPrev(prev);
+                this.addFreeSegment(newFreeTail);
             }
         }
         // current is in the middle
         else {
             // both prev and next are free, expand prev
             if (prev.isFree() && next.isFree()) {
+                this.removeFreeSegment(prev);
                 prev.setLength(prev.getLength() + current.getLength() + next.getLength());
                 prev.setNext(next.getNext());
+                this.addFreeSegment(prev);
                 if (next.getNext() != null) {
                     next.getNext().setPrev(prev);
                 }
             }
             // prev is free, expand it
             else if (prev.isFree()) {
+                this.removeFreeSegment(prev);
                 prev.setLength(prev.getLength() + current.getLength());
                 prev.setNext(next);
                 next.setPrev(prev);
+                this.addFreeSegment(prev);
             }
             // next is free, expand it
             else if (next.isFree()) {
+                this.removeFreeSegment(next);
                 next.setOffset(current.getOffset());
                 next.setLength(next.getLength() + current.getLength());
                 next.setPrev(prev);
                 prev.setNext(next);
+                this.addFreeSegment(next);
             }
             // neither is free, create new free segment between them
             else {
@@ -196,6 +322,7 @@ public class YoungGenGlBufferArena extends GlBufferArena {
                 newFreeSegment.setPrev(prev);
                 newFreeSegment.setNext(next);
                 next.setPrev(newFreeSegment);
+                this.addFreeSegment(newFreeSegment);
             }
         }
     }

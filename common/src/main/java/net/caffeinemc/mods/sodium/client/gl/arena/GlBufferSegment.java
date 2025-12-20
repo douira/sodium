@@ -91,8 +91,7 @@ public class GlBufferSegment {
         this.setNext(entry.getNext());
 
         if (this.getNext() != null) {
-            this.getNext()
-                    .setPrev(this);
+            this.getNext().setPrev(this);
         }
     }
 }
