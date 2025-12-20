@@ -4,7 +4,7 @@ import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceMap;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
-import net.caffeinemc.mods.sodium.client.gl.arena.ArenaAllocator;
+import net.caffeinemc.mods.sodium.client.gl.arena.ArenaAggregator;
 import net.caffeinemc.mods.sodium.client.gl.arena.PendingUpload;
 import net.caffeinemc.mods.sodium.client.gl.arena.staging.FallbackStagingBuffer;
 import net.caffeinemc.mods.sodium.client.gl.arena.staging.MappedStagingBuffer;
@@ -33,11 +33,11 @@ public class RenderRegionManager {
     private final Long2ReferenceOpenHashMap<RenderRegion> regions = new Long2ReferenceOpenHashMap<>();
 
     private final StagingBuffer stagingBuffer;
-    private final ArenaAllocator arenaAllocator;
+    private final ArenaAggregator arenaAggregator;
 
     public RenderRegionManager(CommandList commandList) {
         this.stagingBuffer = createStagingBuffer(commandList);
-        this.arenaAllocator = new ArenaAllocator(this.stagingBuffer);
+        this.arenaAggregator = new ArenaAggregator(this.stagingBuffer);
     }
 
     public void update() {
@@ -150,20 +150,18 @@ public class RenderRegionManager {
         var cameraPosition = Minecraft.getInstance().gameRenderer.getMainCamera().position();
 
         var resources = region.createResources(commandList);
-        var regionFillFractionInv = region.getFillFractionInv();
 
         profiler.push("upload_vertices");
 
         if (!uploads.isEmpty()) {
-            var arena = resources.getGeometryArena();
-            boolean bufferChanged = arena.upload(commandList, uploads.stream()
-                    .map(upload -> upload.vertexUpload), regionFillFractionInv);
+            var allocator = resources.getGeometryAllocator();
+            boolean bufferChanged = allocator.upload(commandList, uploads.stream()
+                    .map(upload -> upload.vertexUpload));
 
             // If any of the buffers changed, the tessellation will need to be updated
             // Once invalidated the tessellation will be re-created on the next attempted use
             if (bufferChanged) {
-                region.refreshTesselation(commandList);
-                region.clearAllCachedBatches();
+                region.onGeometryBufferChange(commandList);
             }
 
             // Collect the upload results
@@ -188,9 +186,9 @@ public class RenderRegionManager {
         var indexBufferChanged = false;
 
         if (!indexUploads.isEmpty()) {
-            var arena = resources.getIndexArena();
-            indexBufferChanged = arena.upload(commandList, indexUploads.stream()
-                    .map(upload -> upload.indexBufferUpload), regionFillFractionInv);
+            var allocator = resources.getIndexAllocator();
+            indexBufferChanged = allocator.upload(commandList, indexUploads.stream()
+                    .map(upload -> upload.indexBufferUpload));
 
             for (PendingSectionIndexBufferUpload upload : indexUploads) {
                 var storage = region.createStorage(DefaultTerrainRenderPasses.TRANSLUCENT);
@@ -199,12 +197,11 @@ public class RenderRegionManager {
         }
 
         if (needsSharedIndexUpdate) {
-            indexBufferChanged |= translucentStorage.updateSharedIndexData(commandList, resources.getIndexArena(), regionFillFractionInv);
+            indexBufferChanged |= translucentStorage.updateSharedIndexData(commandList, resources.getIndexAllocator(), region);
         }
 
         if (indexBufferChanged) {
-            region.refreshIndexedTesselation(commandList);
-            region.clearCachedBatchFor(DefaultTerrainRenderPasses.TRANSLUCENT);
+            region.onIndexBufferChange(commandList);
         }
 
         profiler.pop();
@@ -229,7 +226,7 @@ public class RenderRegionManager {
         this.regions.clear();
         this.stagingBuffer.delete(commandList);
 
-        this.arenaAllocator.delete(commandList);
+        this.arenaAggregator.delete(commandList);
     }
 
     public Collection<RenderRegion> getLoadedRegions() {
@@ -238,6 +235,10 @@ public class RenderRegionManager {
 
     public StagingBuffer getStagingBuffer() {
         return this.stagingBuffer;
+    }
+
+    public ArenaAggregator getArenaAggregator() {
+        return this.arenaAggregator;
     }
 
     public RenderRegion createForChunk(int chunkX, int chunkY, int chunkZ) {
@@ -252,7 +253,7 @@ public class RenderRegionManager {
         var instance = this.regions.get(key);
 
         if (instance == null) {
-            this.regions.put(key, instance = new RenderRegion(x, y, z, this.arenaAllocator));
+            this.regions.put(key, instance = new RenderRegion(x, y, z, this.arenaAggregator));
         }
 
         return instance;

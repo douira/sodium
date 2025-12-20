@@ -1,8 +1,8 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.region;
 
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
-import net.caffeinemc.mods.sodium.client.gl.arena.ArenaAllocator;
-import net.caffeinemc.mods.sodium.client.gl.arena.GlBufferArena;
+import net.caffeinemc.mods.sodium.client.gl.arena.ArenaAggregator;
+import net.caffeinemc.mods.sodium.client.gl.arena.RegionOwnedAllocator;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlBuffer;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlBufferStreamer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
@@ -47,7 +47,7 @@ public class RenderRegion {
         Validate.isTrue(MathUtil.isPowerOfTwo(REGION_LENGTH));
     }
 
-    private final ArenaAllocator arenaAllocator;
+    private final ArenaAggregator arenaAggregator;
     private final int x, y, z;
 
     private final ChunkRenderList renderList;
@@ -61,13 +61,13 @@ public class RenderRegion {
 
     private final Map<TerrainRenderPass, MultiDrawBatch> cachedBatches = new Reference2ReferenceOpenHashMap<>();
 
-    public RenderRegion(int x, int y, int z, ArenaAllocator arenaAllocator) {
+    public RenderRegion(int x, int y, int z, ArenaAggregator arenaAggregator) {
         this.x = x;
         this.y = y;
         this.z = z;
         this.creationTime = System.currentTimeMillis();
 
-        this.arenaAllocator = arenaAllocator;
+        this.arenaAggregator = arenaAggregator;
         this.renderList = new ChunkRenderList(this);
     }
 
@@ -178,7 +178,8 @@ public class RenderRegion {
         return storage;
     }
 
-    public void refreshTesselation(CommandList commandList) {
+    public void onGeometryBufferChange(CommandList commandList) {
+        // refresh the geometry tessellation
         if (this.resources != null) {
             this.resources.deleteTessellation(commandList);
             this.resources.deleteIndexedTessellation(commandList);
@@ -187,14 +188,21 @@ public class RenderRegion {
         for (var storage : this.sectionRenderData.values()) {
             storage.onBufferResized();
         }
+
+        // invalidate the cached batches
+        this.clearAllCachedBatches();
     }
 
-    public void refreshIndexedTesselation(CommandList commandList) {
+    public void onIndexBufferChange(CommandList commandList) {
+        // refresh the index tessellation
         if (this.resources != null) {
             this.resources.deleteIndexedTessellation(commandList);
         }
 
         this.sectionRenderData.get(DefaultTerrainRenderPasses.TRANSLUCENT).onIndexBufferResized();
+
+        // invalidate the cached batches
+        this.clearCachedBatchFor(DefaultTerrainRenderPasses.TRANSLUCENT);
     }
 
     public void addSection(RenderSection section) {
@@ -259,8 +267,8 @@ public class RenderRegion {
     }
 
     public static class DeviceResources {
-        private final GlBufferArena geometryArena;
-        private final GlBufferArena indexArena;
+        private final RegionOwnedAllocator geometryArena;
+        private final RegionOwnedAllocator indexArena;
         private final GlBufferStreamer chunkFades;
         private GlTessellation tessellation;
         private GlTessellation indexedTessellation;
@@ -276,9 +284,9 @@ public class RenderRegion {
         public DeviceResources(CommandList commandList, RenderRegion region) {
             int stride = ChunkMeshFormats.COMPACT.getVertexFormat().getStride();
 
-            this.geometryArena = region.arenaAllocator.createArena(commandList, region, REGION_SIZE * SECTION_VERTEX_COUNT_ESTIMATE, stride);
+            this.geometryArena = region.arenaAggregator.createOwnedGeometryAllocator(commandList, region, stride, region::onGeometryBufferChange);
             this.chunkFades = new GlBufferStreamer(commandList, REGION_SIZE, Integer.BYTES);
-            this.indexArena = region.arenaAllocator.createArena(commandList, region, REGION_SIZE * SECTION_INDEX_COUNT_ESTIMATE, Integer.BYTES);
+            this.indexArena = region.arenaAggregator.createOwnedIndexAllocator(commandList, region, Integer.BYTES, region::onIndexBufferChange);
         }
 
         public void writeMeshTimes(int sectionIndex, int millisecondToCompare) {
@@ -310,7 +318,7 @@ public class RenderRegion {
         }
 
         public GlBuffer prepareChunkData(CommandList commandList) {
-            return chunkFades.prepare(commandList);
+            return this.chunkFades.prepare(commandList);
         }
 
         public void deleteTessellation(CommandList commandList) {
@@ -338,16 +346,16 @@ public class RenderRegion {
         public void delete(CommandList commandList) {
             this.deleteTessellation(commandList);
             this.deleteIndexedTessellation(commandList);
-            this.geometryArena.delete(commandList);
-            this.indexArena.delete(commandList);
+            this.geometryArena.deleteSingleOwner(commandList);
+            this.indexArena.deleteSingleOwner(commandList);
             this.chunkFades.delete(commandList);
         }
 
-        public GlBufferArena getGeometryArena() {
+        public RegionOwnedAllocator getGeometryAllocator() {
             return this.geometryArena;
         }
 
-        public GlBufferArena getIndexArena() {
+        public RegionOwnedAllocator getIndexAllocator() {
             return this.indexArena;
         }
 

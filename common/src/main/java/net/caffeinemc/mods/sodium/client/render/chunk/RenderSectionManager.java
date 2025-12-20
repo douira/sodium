@@ -54,9 +54,9 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import org.apache.commons.lang3.ArrayUtils;
+import org.joml.Vector3dc;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import org.joml.Vector3dc;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -872,16 +872,27 @@ public class RenderSectionManager {
                 continue;
             }
 
-            var geometryArena = resources.getGeometryArena();
-            geometryDeviceUsed += geometryArena.getDeviceUsedMemory();
-            geometryDeviceAllocated += geometryArena.getDeviceAllocatedMemory();
+            var geometryArena = resources.getGeometryAllocator();
+            if (geometryArena.isSingleOwner()) {
+                geometryDeviceUsed += geometryArena.getDeviceUsedMemory();
+                geometryDeviceAllocated += geometryArena.getDeviceAllocatedMemory();
+                count++;
+            }
 
-            var indexArena = resources.getIndexArena();
-            indexDeviceUsed += indexArena.getDeviceUsedMemory();
-            indexDeviceAllocated += indexArena.getDeviceAllocatedMemory();
-
-            count++;
+            var indexArena = resources.getIndexAllocator();
+            if (indexArena.isSingleOwner()) {
+                indexDeviceUsed += indexArena.getDeviceUsedMemory();
+                indexDeviceAllocated += indexArena.getDeviceAllocatedMemory();
+                count++;
+            }
         }
+
+        var aggregator = this.regions.getArenaAggregator();
+        geometryDeviceUsed += aggregator.getGeometryDeviceUsedMemory();
+        geometryDeviceAllocated += aggregator.getGeometryDeviceAllocatedMemory();
+        indexDeviceUsed += aggregator.getIndexDeviceUsedMemory();
+        indexDeviceAllocated += aggregator.getIndexDeviceAllocatedMemory();
+        count += aggregator.getBufferCount();
 
         if (verbose) {
             list.add(String.format("Pools: Geometry %d/%d MiB, Index %d/%d MiB (%d buffers)",

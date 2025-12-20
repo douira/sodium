@@ -3,9 +3,8 @@ package net.caffeinemc.mods.sodium.client.gl.arena;
 import net.caffeinemc.mods.sodium.client.util.UInt32;
 
 public class GlBufferSegment {
-    private final GlBufferArena arena;
-
-    private boolean free = false;
+    private AllocatorBase allocator;
+    private RegionOwnedAllocator owner;
 
     private int offset; /* Uint32 */
     private int length; /* Uint32 */
@@ -13,10 +12,15 @@ public class GlBufferSegment {
     private GlBufferSegment next;
     private GlBufferSegment prev;
 
-    public GlBufferSegment(GlBufferArena arena, long offset, long length) {
-        this.arena = arena;
+    public GlBufferSegment(GlBufferArena allocator, RegionOwnedAllocator owner, long offset, long length) {
+        this.allocator = allocator;
+        this.owner = owner;
         this.offset = UInt32.downcast(offset);
         this.length = UInt32.downcast(length);
+    }
+
+    public static GlBufferSegment createFreeSegment(GlBufferArena allocator, long offset, long length) {
+        return new GlBufferSegment(allocator, null, offset, length);
     }
 
     /* Uint32 */
@@ -42,12 +46,16 @@ public class GlBufferSegment {
         this.length = UInt32.downcast(length);
     }
 
-    protected void setFree(boolean free) {
-        this.free = free;
+    protected void setOwner(RegionOwnedAllocator owner) {
+        this.owner = owner;
+    }
+
+    protected void setFree() {
+        this.owner = null;
     }
 
     protected boolean isFree() {
-        return this.free;
+        return this.owner == null;
     }
 
     protected void setNext(GlBufferSegment next) {
@@ -67,7 +75,15 @@ public class GlBufferSegment {
     }
 
     public void delete() {
-        this.arena.free(this);
+        this.allocator.free(this);
+    }
+
+    void setAllocator(AllocatorBase allocator) {
+        this.allocator = allocator;
+    }
+
+    protected RegionOwnedAllocator getOwner() {
+        return this.owner;
     }
 
     protected void mergeInto(GlBufferSegment entry) {

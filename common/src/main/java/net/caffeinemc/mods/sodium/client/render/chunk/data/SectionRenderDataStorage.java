@@ -1,8 +1,8 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.data;
 
-import net.caffeinemc.mods.sodium.client.gl.arena.GlBufferArena;
 import net.caffeinemc.mods.sodium.client.gl.arena.GlBufferSegment;
 import net.caffeinemc.mods.sodium.client.gl.arena.PendingUpload;
+import net.caffeinemc.mods.sodium.client.gl.arena.RegionOwnedAllocator;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
 import net.caffeinemc.mods.sodium.client.render.chunk.SharedQuadIndexBuffer;
@@ -145,7 +145,7 @@ public class SectionRenderDataStorage {
      * @param arena The buffer arena to allocate the new buffer from
      * @return true if the arena resized itself
      */
-    public boolean updateSharedIndexData(CommandList commandList, GlBufferArena arena, float regionFillFractionInv) {
+    public boolean updateSharedIndexData(CommandList commandList, RegionOwnedAllocator arena, RenderRegion owner) {
         // assumes this.needsSharedIndexUpdate is true when this is called
         this.needsSharedIndexUpdate = false;
 
@@ -177,7 +177,7 @@ public class SectionRenderDataStorage {
         // create and upload a new shared index buffer
         var buffer = SharedQuadIndexBuffer.createIndexBuffer(SharedQuadIndexBuffer.IndexType.INTEGER, this.sharedIndexCapacity);
         var pendingUpload = new PendingUpload(buffer);
-        var bufferChanged = arena.upload(commandList, Stream.of(pendingUpload), regionFillFractionInv);
+        var bufferChanged = arena.upload(commandList, Stream.of(pendingUpload));
         this.sharedIndexAllocation = pendingUpload.getResult();
         buffer.free();
 
