@@ -66,8 +66,8 @@ public class RenderSectionManager {
     private static final float IMMEDIATE_PRESENT_DISTANCE = Mth.square(64.0f);
     private static final float NEARBY_SORT_DISTANCE = Mth.square(25.0f);
 
-    private static final float FRAME_DURATION_UPLOAD_FRACTION = 0.1f;
-    private static final long MIN_UPLOAD_DURATION_BUDGET = 2_000_000L; // 2ms
+    private static final float FRAME_DURATION_UPLOAD_FRACTION = 0.3f;
+    private static final long MIN_UPLOAD_DURATION_BUDGET = 10_000_000L; // 2ms
 
     private final ChunkBuilder builder;
 

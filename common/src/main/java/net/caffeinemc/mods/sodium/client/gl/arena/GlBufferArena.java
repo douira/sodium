@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 public class GlBufferArena implements AllocatorBase {
-    static final boolean CHECK_ASSERTIONS = true;
+    static final boolean CHECK_ASSERTIONS = false;
 
     // how many segments we require to be present before we calculate an average size
     public static final int MIN_SEGMENTS_FOR_AVG = 16;
@@ -30,7 +30,7 @@ public class GlBufferArena implements AllocatorBase {
 
     long capacity;
     long used;
-    private int segmentCount;
+    int usedSegments;
 
     final int stride;
 
@@ -76,6 +76,7 @@ public class GlBufferArena implements AllocatorBase {
 
     void receiveSegmentsFrom(CommandList commandList, List<GlBufferSegment> segments, GlMutableBuffer srcBufferObj, long requiredCapacity) {
         this.used = requiredCapacity;
+        this.usedSegments = segments.size();
         if (this.used > this.capacity) {
             throw new UnsupportedOperationException("New capacity must be larger than used size");
         }
@@ -193,38 +194,36 @@ public class GlBufferArena implements AllocatorBase {
 
     void updateUsed(long deltaUsed, RegionOwnedAllocator owner) {
         this.used += deltaUsed;
-        this.segmentCount += Long.signum(deltaUsed);
+        this.usedSegments += Long.signum(deltaUsed);
     }
 
     GlBufferSegment alloc(int size, RegionOwnedAllocator owner) {
-        GlBufferSegment a = this.findFree(size);
+        GlBufferSegment free = this.findFree(size);
 
-        if (a == null) {
+        if (free == null) {
             return null;
         }
 
         GlBufferSegment result;
 
         // exact fit
-        if (a.getLength() == size) {
-            a.setOwner(owner);
+        if (free.getLength() == size) {
+            free.setOwner(owner);
 
-            result = a;
+            result = free;
         }
         // free space is larger than requested, return new segment at end of free space
         else {
-            GlBufferSegment b = new GlBufferSegment(this, owner, a.getEnd() - size, size);
-            b.setNext(a.getNext());
-            b.setPrev(a);
+            result = new GlBufferSegment(this, owner, free.getEnd() - size, size);
+            result.setNext(free.getNext());
+            result.setPrev(free);
 
-            if (b.getNext() != null) {
-                b.getNext().setPrev(b);
+            if (result.getNext() != null) {
+                result.getNext().setPrev(result);
             }
 
-            a.setLength(a.getLength() - size);
-            a.setNext(b);
-
-            result = b;
+            free.setLength(free.getLength() - size);
+            free.setNext(result);
         }
 
         this.updateUsed(result.getLength(), owner);
@@ -355,7 +354,7 @@ public class GlBufferArena implements AllocatorBase {
         // Calculate the amount of memory needed for the remaining uploads
         long requiredNewSize = getNewRequiredSize(queue);
 
-        int newSegmentCount = this.segmentCount + queue.size();
+        int newSegmentCount = this.usedSegments + queue.size();
 
         return estimateNewCapacity(newSegmentCount, regionFillFractionInv, requiredNewSize);
     }
@@ -390,12 +389,13 @@ public class GlBufferArena implements AllocatorBase {
 
     void tryUploads(CommandList commandList, RegionOwnedAllocator owner, List<PendingUpload> queue) {
         queue.removeIf(upload -> this.tryUpload(commandList, owner, upload));
+
+        // TODO: maybe only do this once rather than repeatedly if we have a move going on
         this.stagingBuffer.flush(commandList);
     }
 
     private boolean tryUpload(CommandList commandList, RegionOwnedAllocator owner, PendingUpload upload) {
-        ByteBuffer data = upload.getDataBuffer()
-                .getDirectBuffer();
+        ByteBuffer data = upload.getDataBuffer().getDirectBuffer();
 
         int elementCount = data.remaining() / this.stride;
 
@@ -411,6 +411,28 @@ public class GlBufferArena implements AllocatorBase {
         upload.setResult(dst);
 
         return true;
+    }
+
+    void checkSegmentAssertions(GlBufferSegment segment) {
+        if (CHECK_ASSERTIONS) {
+            // check that the segment makes sense
+            if (segment.getOffset() < 0 || segment.getEnd() > this.capacity) {
+                throw new IllegalStateException("segment out of bounds");
+            }
+
+            var next = segment.getNext();
+            if (next != null) {
+                if (next.getPrev() != segment) {
+                    throw new IllegalStateException("segment.next.prev != segment: broken linkage");
+                }
+            }
+            var prev = segment.getPrev();
+            if (prev != null) {
+                if (prev.getNext() != segment) {
+                    throw new IllegalStateException("segment.prev.next != segment: broken linkage");
+                }
+            }
+        }
     }
 
     void checkAssertions() {

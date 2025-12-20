@@ -1,7 +1,7 @@
 package net.caffeinemc.mods.sodium.client.gl.arena;
 
-import it.unimi.dsi.fastutil.longs.Long2ReferenceAVLTreeMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceRBTreeMap;
+import it.unimi.dsi.fastutil.longs.Long2ReferenceSortedMap;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlMutableBuffer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 
@@ -9,8 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class YoungGenGlBufferArena extends GlBufferArena {
-    Long2ReferenceAVLTreeMap<RegionOwnedAllocator> ownersByUsed = new Long2ReferenceAVLTreeMap<>();
-    Long2ReferenceRBTreeMap<GlBufferSegment> freeSegmentsByLength = new Long2ReferenceRBTreeMap<>(Long::compareUnsigned);
+    Long2ReferenceSortedMap<RegionOwnedAllocator> ownersByUsed = new Long2ReferenceRBTreeMap<>();
+    Long2ReferenceSortedMap<GlBufferSegment> freeSegmentsByLength = new Long2ReferenceRBTreeMap<>(Long::compareUnsigned);
 
     YoungGenGlBufferArena(ArenaAggregator allocator, GlMutableBuffer initialBuffer, long capacity, int stride) {
         super(allocator, initialBuffer, capacity, stride);
@@ -23,10 +23,12 @@ public class YoungGenGlBufferArena extends GlBufferArena {
 
     private void addFreeSegment(GlBufferSegment segment) {
         this.freeSegmentsByLength.put(makeSegmentKey(segment), segment);
+        this.checkSegmentAssertions(segment);
     }
 
     private void removeFreeSegment(GlBufferSegment segment) {
         this.freeSegmentsByLength.remove(makeSegmentKey(segment));
+        this.checkSegmentAssertions(segment);
     }
 
     @Override
@@ -89,16 +91,12 @@ public class YoungGenGlBufferArena extends GlBufferArena {
 
     @Override
     GlBufferSegment findFree(int size) {
-//        var lastKey = this.freeSegmentsByLength.lastLongKey();
-//        if (lastKey >>> 32 < (long) size) {
-//            return null;
-//        }
-//        return this.freeSegmentsByLength.remove(lastKey);
+        // find the smallest segment that fits
         var map = this.freeSegmentsByLength.tailMap((long) size << 32);
         if (map.isEmpty()) {
             return null;
         }
-        return map.pollLastEntry().getValue();
+        return map.pollFirstEntry().getValue();
     }
 
     @Override
@@ -106,36 +104,34 @@ public class YoungGenGlBufferArena extends GlBufferArena {
         this.checkAssertions();
 
         // find a free segment, this segment is already removed from the free list
-        GlBufferSegment a = this.findFree(size);
+        GlBufferSegment free = this.findFree(size);
 
-        if (a == null) {
+        if (free == null) {
             return null;
         }
 
         GlBufferSegment result;
 
         // exact fit
-        if (a.getLength() == size) {
-            a.setOwner(owner);
+        if (free.getLength() == size) {
+            free.setOwner(owner);
 
-            result = a;
+            result = free;
         }
         // free space is larger than requested, return new segment at end of free space
         else {
-            GlBufferSegment b = new GlBufferSegment(this, owner, a.getEnd() - size, size);
-            b.setNext(a.getNext());
-            b.setPrev(a);
+            result = new GlBufferSegment(this, owner, free.getEnd() - size, size);
+            result.setNext(free.getNext());
+            result.setPrev(free);
 
-            if (b.getNext() != null) {
-                b.getNext().setPrev(b);
+            if (result.getNext() != null) {
+                result.getNext().setPrev(result);
             }
 
-            a.setLength(a.getLength() - size);
-            a.setNext(b);
+            free.setLength(free.getLength() - size);
+            free.setNext(result);
 
-            this.addFreeSegment(a);
-
-            result = b;
+            this.addFreeSegment(free);
         }
 
         this.updateUsed(result.getLength(), owner);
@@ -149,7 +145,7 @@ public class YoungGenGlBufferArena extends GlBufferArena {
         super.updateUsed(deltaUsed, owner);
         this.ownersByUsed.remove(owner.used);
         owner.used += deltaUsed;
-        owner.segmentCount += Long.signum(deltaUsed);
+        owner.usedSegments += Long.signum(deltaUsed);
         this.ownersByUsed.put(owner.used, owner);
     }
 
@@ -165,49 +161,49 @@ public class YoungGenGlBufferArena extends GlBufferArena {
 
             if (!relocatedUploadingOwner) {
                 biggestUsage = totalOwnerUsageAfterUploads;
-                biggestUsageSegmentCount = uploadingOwner.segmentCount + queue.size();
+                biggestUsageSegmentCount = uploadingOwner.usedSegments + queue.size();
                 biggestUsageOwner = uploadingOwner;
             }
 
-            // get the biggest owner
-            var entry = this.ownersByUsed.lastEntry();
-            if (entry != null) {
-                biggestUsageOwner = entry.getValue();
-                biggestUsage = biggestUsageOwner.used;
-                biggestUsageSegmentCount = biggestUsageOwner.segmentCount;
+            // check if there's another owner that is bigger than this owner will be when it is fully uploaded
+            for (var entry : this.ownersByUsed.reversed().entrySet()) {
+                var entryOwner = entry.getValue();
+                if (entryOwner != uploadingOwner && entryOwner.used > biggestUsage) {
+                    biggestUsage = entryOwner.used;
+                    biggestUsageSegmentCount = entryOwner.usedSegments;
+                    biggestUsageOwner = entryOwner;
+                    break;
+                }
             }
 
             if (biggestUsageOwner == uploadingOwner) {
                 relocatedUploadingOwner = true;
             }
 
-            if (biggestUsageOwner == null) {
-                throw new IllegalStateException("Could not find any owner to relocate for young gen arena resize");
-            }
-
             // by construction, either the owner is the biggest one and is getting moved to its own arena, or another owner is bigger and this one will fit into this young gen arena
 
             // TODO: when estimating new capacity, take into account how full the section already is since a full section will not grow much anymore
             var newCapacity = GlBufferArena.estimateNewCapacity(biggestUsageSegmentCount, biggestUsageOwner.getFillFractionInv(), biggestUsage);
-            transferToNewArena(commandList, biggestUsageOwner, newCapacity, biggestUsage);
+            transferToNewArena(commandList, biggestUsageOwner, newCapacity);
 
             // try uploading again
             uploadingOwner.getBackingArena().tryUploads(commandList, uploadingOwner, queue);
         } while (!queue.isEmpty());
     }
 
-    private void transferToNewArena(CommandList commandList, RegionOwnedAllocator owner, long newCapacity, long usage) {
+    private void transferToNewArena(CommandList commandList, RegionOwnedAllocator owner, long newCapacity) {
         var newArena = this.parent.createArenaOfSizeAtLeast(commandList, newCapacity * this.stride, this.stride);
         owner.setBackingArena(newArena);
         this.ownersByUsed.remove(owner.used);
 
         // extract all segments owned by this owner, and reassign them to the new arena.
         // we also need to patch up the preceding and following segments to remove references to the extracted segments.
+        this.checkAssertions();
         var extractedSegments = this.extractAllSegmentsOwnedBy(owner, newArena);
         this.checkAssertions();
 
         // copy the extracted segments into the new arena
-        newArena.receiveSegmentsFrom(commandList, extractedSegments, this.arenaBuffer, usage);
+        newArena.receiveSegmentsFrom(commandList, extractedSegments, this.arenaBuffer, owner.used);
 
         // notify the owner that has been moved of the buffer change
         owner.notifyBufferChanged(commandList);
@@ -245,6 +241,8 @@ public class YoungGenGlBufferArena extends GlBufferArena {
             }
             current = next;
         }
+
+        this.checkAssertions();
 
         return extractedSegments;
     }
@@ -300,12 +298,13 @@ public class YoungGenGlBufferArena extends GlBufferArena {
             // both prev and next are free, expand prev
             if (prev.isFree() && next.isFree()) {
                 this.removeFreeSegment(prev);
+                this.removeFreeSegment(next);
                 prev.setLength(prev.getLength() + current.getLength() + next.getLength());
                 prev.setNext(next.getNext());
-                this.addFreeSegment(prev);
                 if (next.getNext() != null) {
                     next.getNext().setPrev(prev);
                 }
+                this.addFreeSegment(prev);
             }
             // prev is free, expand it
             else if (prev.isFree()) {

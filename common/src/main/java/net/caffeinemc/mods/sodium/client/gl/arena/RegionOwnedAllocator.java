@@ -12,7 +12,7 @@ public class RegionOwnedAllocator implements AllocatorBase {
     private final Consumer<CommandList> onBufferChange;
     private GlBufferArena backingArena;
     long used;
-    int segmentCount;
+    int usedSegments;
 
     public RegionOwnedAllocator(RenderRegion region, Consumer<CommandList> onBufferChange, GlBufferArena backingArena) {
         this.region = region;
