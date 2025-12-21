@@ -1,37 +1,47 @@
 package net.caffeinemc.mods.sodium.client.gl.arena;
 
-import it.unimi.dsi.fastutil.longs.Long2ReferenceRBTreeMap;
-import it.unimi.dsi.fastutil.longs.Long2ReferenceSortedMap;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlMutableBuffer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.NavigableMap;
-import java.util.TreeMap;
 
-public class SharedGlBufferArena extends GlBufferArena {
-    Long2ReferenceSortedMap<RegionOwnedAllocator> ownersByUsed = new Long2ReferenceRBTreeMap<>();
+public class SharedGlBufferArena extends GlBufferArena implements SizedTreeMap.Sized {
+    SizedTreeMap<RegionAllocatorHandle> ownersByUsed = new SizedTreeMap<>();
     // profiling has shown that Long2ReferenceRBTreeMap is 58% slower than TreeMap here
-    NavigableMap<Long, GlBufferSegment> freeSegmentsByLength = new TreeMap<>(Long::compareUnsigned);
+    SizedTreeMap<GlBufferSegment> freeSegmentsByLength = new SizedTreeMap<>();
+    private final int identifier;
+    private static int nextIdentifier = 1;
 
     SharedGlBufferArena(ArenaAggregator allocator, GlMutableBuffer initialBuffer, long capacity, int stride) {
         super(allocator, initialBuffer, capacity, stride);
+        this.identifier = nextIdentifier++;
         this.addFreeSegment(this.head);
     }
 
-    private static long makeSegmentKey(GlBufferSegment segment) {
-        return (segment.getLength() << 32) | segment.getOffset();
-    }
-
     private void addFreeSegment(GlBufferSegment segment) {
-        this.freeSegmentsByLength.put(makeSegmentKey(segment), segment);
+        this.freeSegmentsByLength.addSized(segment);
         this.checkSegmentAssertions(segment);
     }
 
     private void removeFreeSegment(GlBufferSegment segment) {
-        this.freeSegmentsByLength.remove(makeSegmentKey(segment));
-        this.checkSegmentAssertions(segment);
+        this.freeSegmentsByLength.removeSized(segment);
+
+        // don't check segment assertions on remove because what we're removing is invalid
+    }
+
+    public long getBiggestFreeSegmentSize() {
+        return this.freeSegmentsByLength.getHighestSize();
+    }
+
+    @Override
+    public long getSize() {
+        return this.getBiggestFreeSegmentSize();
+    }
+
+    @Override
+    public long getIdentifier() {
+        return this.identifier;
     }
 
     @Override
@@ -93,21 +103,16 @@ public class SharedGlBufferArena extends GlBufferArena {
     }
 
     @Override
-    GlBufferSegment findFree(int size) {
-        // find the smallest segment that fits
-        var map = this.freeSegmentsByLength.tailMap((long) size << 32);
-        if (map.isEmpty()) {
-            return null;
-        }
-        return map.pollFirstEntry().getValue();
+    GlBufferSegment takeFree(long size) {
+        return this.freeSegmentsByLength.removeFirstFitting(size);
     }
 
     @Override
-    GlBufferSegment alloc(int size, RegionOwnedAllocator owner) {
+    GlBufferSegment alloc(long size, RegionAllocatorHandle owner) {
         this.checkAssertions();
 
         // find a free segment, this segment is already removed from the free list
-        GlBufferSegment free = this.findFree(size);
+        GlBufferSegment free = this.takeFree(size);
 
         if (free == null) {
             return null;
@@ -144,23 +149,27 @@ public class SharedGlBufferArena extends GlBufferArena {
     }
 
     @Override
-    void updateUsed(long deltaUsed, RegionOwnedAllocator owner) {
-        super.updateUsed(deltaUsed, owner);
-        this.ownersByUsed.remove(owner.used);
+    void updateUsed(long deltaUsed, RegionAllocatorHandle owner) {
+        this.ownersByUsed.removeSized(owner);
+
+        var segmentDelta = Long.signum(deltaUsed);
+        this.used += deltaUsed;
         owner.used += deltaUsed;
-        owner.usedSegments += Long.signum(deltaUsed);
-        this.ownersByUsed.put(owner.used, owner);
+        this.usedSegments += segmentDelta;
+        owner.usedSegments += segmentDelta;
+
+        this.ownersByUsed.addSized(owner);
     }
 
     @Override
-    void handleResizeUploads(CommandList commandList, RegionOwnedAllocator uploadingOwner, List<PendingUpload> queue, long totalOwnerUsageAfterUploads) {
+    void handleResizeUploads(CommandList commands, RegionAllocatorHandle uploadingOwner, List<PendingUpload> queue, long totalOwnerUsageAfterUploads) {
         boolean relocatedUploadingOwner = false;
 
         // this needs to be a loop because the young gen buffer isn't guaranteed to be defragmented so we may need to evict more than one owner
         do {
             long biggestUsage = Long.MAX_VALUE; // max value to make sure the head map lookup works
             int biggestUsageSegmentCount = 0;
-            RegionOwnedAllocator biggestUsageOwner = null;
+            RegionAllocatorHandle biggestUsageOwner = null;
 
             if (!relocatedUploadingOwner) {
                 biggestUsage = totalOwnerUsageAfterUploads;
@@ -187,32 +196,102 @@ public class SharedGlBufferArena extends GlBufferArena {
 
             // TODO: when estimating new capacity, take into account how full the section already is since a full section will not grow much anymore
             var newCapacity = GlBufferArena.estimateNewCapacity(biggestUsageSegmentCount, biggestUsageOwner.getFillFractionInv(), biggestUsage);
-            transferToNewArena(commandList, biggestUsageOwner, newCapacity);
+            transferToNewArena(commands, biggestUsageOwner, newCapacity);
 
             // try uploading again
-            uploadingOwner.getBackingArena().tryUploads(commandList, uploadingOwner, queue);
+            uploadingOwner.getBackingArena().tryUploads(commands, uploadingOwner, queue);
         } while (!queue.isEmpty());
     }
 
-    private void transferToNewArena(CommandList commandList, RegionOwnedAllocator owner, long newCapacity) {
-        var newArena = this.parent.createArenaOfSizeAtLeast(commandList, newCapacity * this.stride, this.stride);
-        owner.setBackingArena(newArena);
-        this.ownersByUsed.remove(owner.used);
+    private void transferToNewArena(CommandList commands, RegionAllocatorHandle owner, long newCapacity) {
+        var targetArena = this.parent.getArenaFittingFor(commands, newCapacity, this.stride);
+        if (targetArena == this) {
+            throw new IllegalStateException("Target arena is the same as the source arena");
+        }
+        owner.setBackingArena(targetArena);
+        this.ownersByUsed.removeSized(owner);
 
         // extract all segments owned by this owner, and reassign them to the new arena.
         // we also need to patch up the preceding and following segments to remove references to the extracted segments.
         this.checkAssertions();
-        var extractedSegments = this.extractAllSegmentsOwnedBy(owner, newArena);
+        var extractedSegments = this.extractAllSegmentsOwnedBy(owner, targetArena);
         this.checkAssertions();
 
         // copy the extracted segments into the new arena
-        newArena.receiveSegmentsFrom(commandList, extractedSegments, this.arenaBuffer, owner.used);
+        targetArena.receiveSegmentsFrom(commands, extractedSegments, this.arenaBuffer, owner);
 
         // notify the owner that has been moved of the buffer change
-        owner.notifyBufferChanged(commandList);
+        owner.notifyBufferChanged(commands);
     }
 
-    private List<GlBufferSegment> extractAllSegmentsOwnedBy(RegionOwnedAllocator owner, AllocatorBase newAllocator) {
+    @Override
+    void receiveSegmentsFrom(CommandList commandList, List<GlBufferSegment> segments, GlMutableBuffer srcBufferObj, RegionAllocatorHandle owner) {
+        this.used += owner.used;
+        this.usedSegments += segments.size();
+        if (this.used > this.capacity) {
+            throw new UnsupportedOperationException("New capacity must be larger than used size");
+        }
+
+        this.ownersByUsed.addSized(owner);
+
+        // find the target segment that's big enough to contain all segments
+        var targetSegment = this.takeFree(owner.used);
+        if (targetSegment == null) {
+            throw new IllegalStateException("No free segment large enough to receive transferred segments even though there should be one");
+        }
+        long endOfFreePrefix = targetSegment.getEnd() - owner.used;
+        var pendingCopies = this.buildTransferList(segments, endOfFreePrefix);
+
+        this.executeCopyCommands(commandList, pendingCopies, srcBufferObj, this.arenaBuffer);
+
+        this.finalizeInsertedSegments(targetSegment, endOfFreePrefix, segments);
+    }
+
+    private void finalizeInsertedSegments(GlBufferSegment targetSegment, long endOfFreePrefix, List<GlBufferSegment> segments) {
+        if (segments.isEmpty()) {
+            throw new IllegalArgumentException("No segments to insert");
+        }
+
+        // new order: targetSegment.prev -> targetSegment (if any space left) -> segments... -> targetSegment.next
+        // the target has not yet been resized at this point
+        GlBufferSegment targetPrev = targetSegment.getPrev();
+        GlBufferSegment targetNext = targetSegment.getNext();
+        GlBufferSegment firstInserted = segments.getFirst();
+        GlBufferSegment lastInserted = segments.getLast();
+
+        // link lastInserted and targetNext
+        lastInserted.setNext(targetNext);
+        if (targetNext != null) {
+            targetNext.setPrev(lastInserted);
+        }
+
+        // we need to resize the target segment
+        if (endOfFreePrefix > targetSegment.getOffset()) {
+            // there's space before the inserted segments, resize target to be that free space
+            targetSegment.setLength(endOfFreePrefix - targetSegment.getOffset());
+
+            // link targetSegment and firstInserted
+            firstInserted.setPrev(targetSegment);
+            targetSegment.setNext(firstInserted);
+            // prev and target are already linked
+
+            // target segment has already been removed from free list, add it back with new size
+            this.addFreeSegment(targetSegment);
+        } else {
+            // no space before inserted segments, link targetPrev and firstInserted
+            firstInserted.setPrev(targetPrev);
+            if (targetPrev != null) {
+                targetPrev.setNext(firstInserted);
+            } else {
+                // first inserted is now head
+                this.head = firstInserted;
+            }
+        }
+
+        this.checkAssertions();
+    }
+
+    private List<GlBufferSegment> extractAllSegmentsOwnedBy(RegionAllocatorHandle owner, AllocatorBase newAllocator) {
         ArrayList<GlBufferSegment> extractedSegments = new ArrayList<>();
         GlBufferSegment previousExtracted = null;
         GlBufferSegment current = this.head;

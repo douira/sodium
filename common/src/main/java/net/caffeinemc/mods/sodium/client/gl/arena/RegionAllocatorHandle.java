@@ -7,17 +7,20 @@ import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-public class RegionOwnedAllocator implements AllocatorBase {
+public class RegionAllocatorHandle implements AllocatorBase, SizedTreeMap.Sized {
     private final RenderRegion region;
     private final Consumer<CommandList> onBufferChange;
     private GlBufferArena backingArena;
     long used;
     int usedSegments;
+    int identifier;
+    private static int nextIdentifier = 1;
 
-    public RegionOwnedAllocator(RenderRegion region, Consumer<CommandList> onBufferChange, GlBufferArena backingArena) {
+    public RegionAllocatorHandle(RenderRegion region, Consumer<CommandList> onBufferChange, GlBufferArena backingArena) {
         this.region = region;
         this.onBufferChange = onBufferChange;
         this.backingArena = backingArena;
+        this.identifier = nextIdentifier++;
     }
 
     float getFillFractionInv() {
@@ -75,5 +78,15 @@ public class RegionOwnedAllocator implements AllocatorBase {
 
     public void notifyBufferChanged(CommandList commandList) {
         this.onBufferChange.accept(commandList);
+    }
+
+    @Override
+    public long getSize() {
+        return this.used;
+    }
+
+    @Override
+    public long getIdentifier() {
+        return this.identifier;
     }
 }

@@ -2,9 +2,9 @@ package net.caffeinemc.mods.sodium.client.gl.arena;
 
 import net.caffeinemc.mods.sodium.client.util.UInt32;
 
-public class GlBufferSegment {
+public class GlBufferSegment implements SizedTreeMap.Sized {
     private AllocatorBase allocator;
-    private RegionOwnedAllocator owner;
+    private RegionAllocatorHandle owner;
 
     private int offset; /* Uint32 */
     private int length; /* Uint32 */
@@ -12,7 +12,7 @@ public class GlBufferSegment {
     private GlBufferSegment next;
     private GlBufferSegment prev;
 
-    public GlBufferSegment(GlBufferArena allocator, RegionOwnedAllocator owner, long offset, long length) {
+    public GlBufferSegment(GlBufferArena allocator, RegionAllocatorHandle owner, long offset, long length) {
         this.allocator = allocator;
         this.owner = owner;
         this.offset = UInt32.downcast(offset);
@@ -46,7 +46,7 @@ public class GlBufferSegment {
         this.length = UInt32.downcast(length);
     }
 
-    protected void setOwner(RegionOwnedAllocator owner) {
+    protected void setOwner(RegionAllocatorHandle owner) {
         this.owner = owner;
     }
 
@@ -82,7 +82,7 @@ public class GlBufferSegment {
         this.allocator = allocator;
     }
 
-    protected RegionOwnedAllocator getOwner() {
+    protected RegionAllocatorHandle getOwner() {
         return this.owner;
     }
 
@@ -93,5 +93,15 @@ public class GlBufferSegment {
         if (this.getNext() != null) {
             this.getNext().setPrev(this);
         }
+    }
+
+    @Override
+    public long getSize() {
+        return this.getLength();
+    }
+
+    @Override
+    public long getIdentifier() {
+        return this.getOffset();
     }
 }

@@ -895,9 +895,10 @@ public class RenderSectionManager {
         count += aggregator.getBufferCount();
 
         if (verbose) {
-            list.add(String.format("Pools: Geometry %d/%d MiB, Index %d/%d MiB (%d buffers)",
+            list.add(String.format("Pools: Geometry %d/%d MiB, Index %d/%d MiB, Misc %d MiB, %d buffers",
                     MathUtil.toMib(geometryDeviceUsed), MathUtil.toMib(geometryDeviceAllocated),
-                    MathUtil.toMib(indexDeviceUsed), MathUtil.toMib(indexDeviceAllocated), count));
+                    MathUtil.toMib(indexDeviceUsed), MathUtil.toMib(indexDeviceAllocated),
+                    aggregator.getMiscAllocatedMemory(), count));
             list.add(String.format("Transfer Queue: %s", this.regions.getStagingBuffer().toString()));
         } else {
             list.add(String.format("G:%d/%d I:%d/%d MiB TQ: %s #%d",

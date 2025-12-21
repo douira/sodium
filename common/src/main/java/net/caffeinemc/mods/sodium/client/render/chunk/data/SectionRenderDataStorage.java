@@ -2,7 +2,7 @@ package net.caffeinemc.mods.sodium.client.render.chunk.data;
 
 import net.caffeinemc.mods.sodium.client.gl.arena.GlBufferSegment;
 import net.caffeinemc.mods.sodium.client.gl.arena.PendingUpload;
-import net.caffeinemc.mods.sodium.client.gl.arena.RegionOwnedAllocator;
+import net.caffeinemc.mods.sodium.client.gl.arena.RegionAllocatorHandle;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
 import net.caffeinemc.mods.sodium.client.render.chunk.SharedQuadIndexBuffer;
@@ -145,7 +145,7 @@ public class SectionRenderDataStorage {
      * @param arena The buffer arena to allocate the new buffer from
      * @return true if the arena resized itself
      */
-    public boolean updateSharedIndexData(CommandList commandList, RegionOwnedAllocator arena, RenderRegion owner) {
+    public boolean updateSharedIndexData(CommandList commandList, RegionAllocatorHandle arena, RenderRegion owner) {
         // assumes this.needsSharedIndexUpdate is true when this is called
         this.needsSharedIndexUpdate = false;
 

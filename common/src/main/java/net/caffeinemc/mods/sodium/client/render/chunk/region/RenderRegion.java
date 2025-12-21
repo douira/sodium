@@ -2,7 +2,7 @@ package net.caffeinemc.mods.sodium.client.render.chunk.region;
 
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import net.caffeinemc.mods.sodium.client.gl.arena.ArenaAggregator;
-import net.caffeinemc.mods.sodium.client.gl.arena.RegionOwnedAllocator;
+import net.caffeinemc.mods.sodium.client.gl.arena.RegionAllocatorHandle;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlBuffer;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlBufferStreamer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
@@ -267,8 +267,8 @@ public class RenderRegion {
     }
 
     public static class DeviceResources {
-        private final RegionOwnedAllocator geometryArena;
-        private final RegionOwnedAllocator indexArena;
+        private final RegionAllocatorHandle geometryArena;
+        private final RegionAllocatorHandle indexArena;
         private final GlBufferStreamer chunkFades;
         private GlTessellation tessellation;
         private GlTessellation indexedTessellation;
@@ -284,9 +284,9 @@ public class RenderRegion {
         public DeviceResources(CommandList commandList, RenderRegion region) {
             int stride = ChunkMeshFormats.COMPACT.getVertexFormat().getStride();
 
-            this.geometryArena = region.arenaAggregator.createOwnedGeometryAllocator(commandList, region, stride, region::onGeometryBufferChange);
+            this.geometryArena = region.arenaAggregator.getGeometryBufferAllocator(commandList, region, stride, region::onGeometryBufferChange);
             this.chunkFades = new GlBufferStreamer(commandList, REGION_SIZE, Integer.BYTES);
-            this.indexArena = region.arenaAggregator.createOwnedIndexAllocator(commandList, region, Integer.BYTES, region::onIndexBufferChange);
+            this.indexArena = region.arenaAggregator.getIndexBufferAllocator(commandList, region, Integer.BYTES, region::onIndexBufferChange);
         }
 
         public void writeMeshTimes(int sectionIndex, int millisecondToCompare) {
@@ -351,11 +351,11 @@ public class RenderRegion {
             this.chunkFades.delete(commandList);
         }
 
-        public RegionOwnedAllocator getGeometryAllocator() {
+        public RegionAllocatorHandle getGeometryAllocator() {
             return this.geometryArena;
         }
 
-        public RegionOwnedAllocator getIndexAllocator() {
+        public RegionAllocatorHandle getIndexAllocator() {
             return this.indexArena;
         }
 
