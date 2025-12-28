@@ -6,32 +6,15 @@ import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SharedGlBufferArena extends GlBufferArena implements SizedTreeMap.Sized {
-    SizedTreeMap<RegionAllocatorHandle> ownersByUsed = new SizedTreeMap<>();
-    // profiling has shown that Long2ReferenceRBTreeMap is 58% slower than TreeMap here
-    SizedTreeMap<GlBufferSegment> freeSegmentsByLength = new SizedTreeMap<>();
+public class SharedGlBufferArena extends DefragmentingGlBufferArena implements SizedTreeMap.Sized {
+    final SizedTreeMap<RegionAllocatorHandle> ownersByUsed = new SizedTreeMap<>();
+
     private final int identifier;
     private static int nextIdentifier = 1;
 
-    SharedGlBufferArena(ArenaAggregator allocator, GlMutableBuffer initialBuffer, long capacity, int stride) {
+    protected SharedGlBufferArena(ArenaAggregator allocator, GlMutableBuffer initialBuffer, long capacity, int stride) {
         super(allocator, initialBuffer, capacity, stride);
         this.identifier = nextIdentifier++;
-        this.addFreeSegment(this.head);
-    }
-
-    private void addFreeSegment(GlBufferSegment segment) {
-        this.freeSegmentsByLength.addSized(segment);
-        this.checkSegmentAssertions(segment);
-    }
-
-    private void removeFreeSegment(GlBufferSegment segment) {
-        this.freeSegmentsByLength.removeSized(segment);
-
-        // don't check segment assertions on remove because what we're removing is invalid
-    }
-
-    public long getBiggestFreeSegmentSize() {
-        return this.freeSegmentsByLength.getHighestSize();
     }
 
     @Override
@@ -51,101 +34,6 @@ public class SharedGlBufferArena extends GlBufferArena implements SizedTreeMap.S
 
     public void deleteShared(CommandList commands) {
         super.deleteSingleOwner(commands);
-    }
-
-    @Override
-    public void free(GlBufferSegment entry) {
-        if (entry.isFree()) {
-            throw new IllegalStateException("Already freed");
-        }
-
-        var owner = entry.getOwner();
-        entry.setFree();
-
-        this.updateUsed(-entry.getLength(), owner);
-
-        GlBufferSegment next = entry.getNext();
-        boolean nextFree = next != null && next.isFree();
-        GlBufferSegment prev = entry.getPrev();
-        boolean prevFree = prev != null && prev.isFree();
-
-        // both free, merge with both
-        if (nextFree && prevFree) {
-            this.removeFreeSegment(prev);
-            this.removeFreeSegment(next);
-            prev.setLength(prev.getLength() + entry.getLength() + next.getLength());
-            prev.setNext(next.getNext());
-            if (next.getNext() != null) {
-                next.getNext().setPrev(prev);
-            }
-            this.addFreeSegment(prev);
-        } else if (nextFree) {
-            this.removeFreeSegment(next);
-            entry.setLength(entry.getLength() + next.getLength());
-            entry.setNext(next.getNext());
-            if (next.getNext() != null) {
-                next.getNext().setPrev(entry);
-            }
-            this.addFreeSegment(entry);
-        } else if (prevFree) {
-            this.removeFreeSegment(prev);
-            prev.setLength(prev.getLength() + entry.getLength());
-            prev.setNext(entry.getNext());
-            if (entry.getNext() != null) {
-                entry.getNext().setPrev(prev);
-            }
-            this.addFreeSegment(prev);
-        } else {
-            this.addFreeSegment(entry);
-        }
-
-        this.checkAssertions();
-    }
-
-    @Override
-    GlBufferSegment takeFree(long size) {
-        return this.freeSegmentsByLength.removeFirstFitting(size);
-    }
-
-    @Override
-    GlBufferSegment alloc(long size, RegionAllocatorHandle owner) {
-        this.checkAssertions();
-
-        // find a free segment, this segment is already removed from the free list
-        GlBufferSegment free = this.takeFree(size);
-
-        if (free == null) {
-            return null;
-        }
-
-        GlBufferSegment result;
-
-        // exact fit
-        if (free.getLength() == size) {
-            free.setOwner(owner);
-
-            result = free;
-        }
-        // free space is larger than requested, return new segment at end of free space
-        else {
-            result = new GlBufferSegment(this, owner, free.getEnd() - size, size);
-            result.setNext(free.getNext());
-            result.setPrev(free);
-
-            if (result.getNext() != null) {
-                result.getNext().setPrev(result);
-            }
-
-            free.setLength(free.getLength() - size);
-            free.setNext(result);
-
-            this.addFreeSegment(free);
-        }
-
-        this.updateUsed(result.getLength(), owner);
-        this.checkAssertions();
-
-        return result;
     }
 
     @Override

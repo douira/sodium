@@ -34,7 +34,7 @@ public class GlBufferArena implements AllocatorBase {
 
     final int stride;
 
-    GlBufferArena(ArenaAggregator parent, GlMutableBuffer initialBuffer, long capacity, int stride) {
+    protected GlBufferArena(ArenaAggregator parent, GlMutableBuffer initialBuffer, long capacity, int stride) {
         this.parent = parent;
         this.stagingBuffer = parent.stagingBuffer;
         this.arenaBuffer = initialBuffer;
@@ -200,6 +200,8 @@ public class GlBufferArena implements AllocatorBase {
     }
 
     GlBufferSegment alloc(long size, RegionAllocatorHandle owner) {
+        this.checkAssertions();
+
         GlBufferSegment free = this.takeFree(size);
 
         if (free == null) {
