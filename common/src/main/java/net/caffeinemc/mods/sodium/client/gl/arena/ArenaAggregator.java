@@ -37,13 +37,13 @@ public class ArenaAggregator {
         final int stride;
         final long sharedSizeBytes;
         final long sharedSize;
-        final SizedTreeMap<SharedGlBufferArena> arenas;
+        final ArrayList<SharedGlBufferArena> arenas;
 
         DataType(int stride, long sharedSizeBytes) {
             this.stride = stride;
             this.sharedSizeBytes = sharedSizeBytes;
             this.sharedSize = sharedSizeBytes / stride;
-            this.arenas = new SizedTreeMap<>();
+            this.arenas = new ArrayList<>();
         }
 
         SharedGlBufferArena createSharedArena(CommandList commands, long requiredCapacity) {
@@ -53,17 +53,27 @@ public class ArenaAggregator {
         }
 
         SharedGlBufferArena ensureSharedArena(CommandList commands, long requiredCapacity) {
-            var arena = this.arenas.getHighestFitting(requiredCapacity);
-            if (arena == null || arena.getBiggestFreeSegmentSize() < requiredCapacity) {
-                arena = createSharedArena(commands, Math.max(requiredCapacity, this.sharedSize));
-                this.arenas.addSized(arena);
+            SharedGlBufferArena arena = null;
+            long biggestFreeSegmentSize = requiredCapacity;
+            for (var arenaEntry : this.arenas) {
+                long arenaBiggestFreeSegmentSize = arenaEntry.getBiggestFreeSegmentSize();
+                if (arenaBiggestFreeSegmentSize >= biggestFreeSegmentSize) {
+                    arena = arenaEntry;
+                    biggestFreeSegmentSize = arenaBiggestFreeSegmentSize;
+                }
             }
+
+            if (arena == null) {
+                arena = createSharedArena(commands, Math.max(requiredCapacity, this.sharedSize));
+                this.arenas.add(arena);
+            }
+
             return arena;
         }
 
         long getDeviceUsedMemory() {
             long used = 0;
-            for (var arenaEntry : this.arenas.values()) {
+            for (var arenaEntry : this.arenas) {
                 used += arenaEntry.getDeviceUsedMemory();
             }
             return used;
@@ -71,7 +81,7 @@ public class ArenaAggregator {
 
         long getDeviceAllocatedMemory() {
             long allocated = 0;
-            for (var arenaEntry : this.arenas.values()) {
+            for (var arenaEntry : this.arenas) {
                 allocated += arenaEntry.getDeviceAllocatedMemory();
             }
             return allocated;
@@ -177,7 +187,7 @@ public class ArenaAggregator {
         freeBufferCount = 0;
 
         for (var dataType : this.dataTypes) {
-            for (var arenaEntry : dataType.arenas.values()) {
+            for (var arenaEntry : dataType.arenas) {
                 arenaEntry.deleteShared(commands);
             }
             dataType.arenas.clear();
