@@ -4,9 +4,13 @@ import net.caffeinemc.mods.sodium.client.gl.arena.staging.StagingBuffer;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlBufferUsage;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlMutableBuffer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
+import net.caffeinemc.mods.sodium.client.gui.Colors;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkMeshFormats;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
@@ -29,17 +33,19 @@ public class ArenaAggregator {
     private static int freeBufferCount = 0;
 
     // all shared arenas, keyed by stride, and then sorted by the biggest contiguous free block size they have to offer
-    private final DataType index = new DataType(Integer.BYTES, SHARED_INDEX_SIZE);
-    private final DataType geometry = new DataType(ChunkMeshFormats.COMPACT.getVertexFormat().getStride(), SHARED_GEOMETRY_SIZE);
+    private final DataType index = new DataType("Index", Integer.BYTES, SHARED_INDEX_SIZE);
+    private final DataType geometry = new DataType("Geometry", ChunkMeshFormats.COMPACT.getVertexFormat().getStride(), SHARED_GEOMETRY_SIZE);
     private final Collection<DataType> dataTypes = List.of(this.index, this.geometry);
 
     private class DataType {
+        final String name;
         final int stride;
         final long sharedSizeBytes;
         final long sharedSize;
         final ArrayList<SharedGlBufferArena> arenas;
 
-        DataType(int stride, long sharedSizeBytes) {
+        DataType(String name, int stride, long sharedSizeBytes) {
+            this.name = name;
             this.stride = stride;
             this.sharedSizeBytes = sharedSizeBytes;
             this.sharedSize = sharedSizeBytes / stride;
@@ -226,5 +232,47 @@ public class ArenaAggregator {
             count += dataType.arenas.size();
         }
         return count;
+    }
+
+    public void renderBufferDebug(GuiGraphics graphics) {
+        int leftPadding = 10;
+        int verticalPadding = 10;
+        int arenaPadding = 4;
+        int targetWidth = graphics.guiWidth() / 2;
+        var totalMapHeight = (graphics.guiHeight() - verticalPadding - 2 * verticalPadding * this.dataTypes.size());
+
+        // count number of maps to adjust heights
+        var countOffset = 2;
+        int mapCount = this.dataTypes.stream().mapToInt(dt -> dt.arenas.size() + countOffset).sum();
+        if (mapCount == 0) {
+            return;
+        }
+
+        int y = verticalPadding;
+        for (var dataType : this.dataTypes) {
+            // dataType.name + " Shared Arenas: " + dataType.arenas.size()
+            var str = String.format("%s Shared Arenas: %d x %d MiB (Used: %.2f MiB / Allocated: %.2f MiB)",
+                    dataType.name,
+                    dataType.arenas.size(),
+                    dataType.sharedSizeBytes / (1024 * 1024),
+                    dataType.getDeviceUsedMemory() / (1024.0 * 1024.0),
+                    dataType.getDeviceAllocatedMemory() / (1024.0 * 1024.0));
+            graphics.drawString(Minecraft.getInstance().font, str, leftPadding, y, Colors.FOREGROUND);
+            y += verticalPadding;
+            var x = leftPadding;
+            var arenaCount = dataType.arenas.size();
+            if (arenaCount == 0) {
+                continue;
+            }
+
+            int mapWidth = (targetWidth - leftPadding * 2 - arenaPadding * (arenaCount - 1)) / arenaCount;
+            int mapHeight = totalMapHeight * (dataType.arenas.size() + countOffset) / mapCount;
+            for (var arenaEntry : dataType.arenas) {
+                arenaEntry.renderDebugMap(graphics, x, y, mapWidth, mapHeight);
+                x += mapWidth + arenaPadding;
+            }
+
+            y += mapHeight + verticalPadding;
+        }
     }
 }

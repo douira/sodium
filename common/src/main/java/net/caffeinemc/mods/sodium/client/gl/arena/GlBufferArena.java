@@ -1,9 +1,15 @@
 package net.caffeinemc.mods.sodium.client.gl.arena;
 
+import net.caffeinemc.mods.sodium.api.util.ColorARGB;
 import net.caffeinemc.mods.sodium.client.gl.arena.staging.StagingBuffer;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlBuffer;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlMutableBuffer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.resources.Identifier;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -505,5 +511,59 @@ public class GlBufferArena implements AllocatorBase {
         if (this.used != used) {
             throw new IllegalStateException("arena.used is invalid");
         }
+    }
+
+    private final Identifier textureId = Identifier.parse("sodium:buffer_debug_" + System.identityHashCode(this));
+    public final DynamicTexture texture = new DynamicTexture(this.textureId::toString, 200, 200, true);
+
+    {
+        this.texture.getPixels().setPixelABGR(0, 0, 0xFFFFFFFF);
+        this.texture.upload();
+        Minecraft.getInstance().getTextureManager().register(this.textureId, this.texture);
+    }
+
+    public void renderDebugMap(GuiGraphics graphics, int x, int y, int drawWidth, int drawHeight) {
+        var image = this.texture.getPixels();
+        int width = image.getWidth();
+        int height = image.getHeight();
+
+        // draw segments, unused are black, used are colored based on owner id
+        var pixelCount = width * height;
+        var seg = this.head;
+        double pos = 0;
+        while (seg != null) {
+            double length = ((double) seg.getLength() / this.capacity) * pixelCount;
+            int color;
+            if (seg.isFree()) {
+                color = 0xFF000000; // black
+            } else {
+                // color based on owner id
+                var ownerColor = System.identityHashCode(seg.getOwner()) & 0x00FFFFFF;
+                var hsv = ColorARGB.toHSV(ownerColor);
+                hsv[1] = Math.max(0.2f, hsv[1]);
+                hsv[2] = Math.max(0.4f, hsv[2]);
+                color = 0xFF000000 | ownerColor;
+            }
+
+            // draw rects with wrapping
+            var lineWidth = width - 1;
+            while (length > 0) {
+                var yPos = (int) Math.floor(pos / lineWidth);
+                var xPos = pos - (yPos * lineWidth);
+                var drawLength = Math.min(length, lineWidth - xPos);
+                if (yPos >= height || xPos < 0) {
+                    break;
+                }
+                image.fillRect((int) xPos, yPos, (int) Math.ceil(drawLength), 1, color);
+                pos += drawLength;
+                length -= drawLength;
+            }
+
+            seg = seg.getNext();
+        }
+
+        this.texture.upload();
+
+        graphics.blit(RenderPipelines.GUI_TEXTURED, this.textureId, x, y, 0, 0, drawWidth, drawHeight, 1, 1, 1, 1);
     }
 }

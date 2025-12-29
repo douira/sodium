@@ -46,6 +46,7 @@ import net.caffeinemc.mods.sodium.client.world.cloned.ChunkRenderContext;
 import net.caffeinemc.mods.sodium.client.world.cloned.ClonedChunkSectionCache;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
@@ -71,7 +72,7 @@ public class RenderSectionManager {
 
     private final ChunkBuilder builder;
 
-    private final RenderRegionManager regions;
+    public final RenderRegionManager regions;
     private final ClonedChunkSectionCache sectionCache;
 
     private final Long2ReferenceMap<RenderSection> sectionByPosition = new Long2ReferenceOpenHashMap<>();
@@ -968,5 +969,9 @@ public class RenderSectionManager {
 
     public Collection<RenderSection> getSectionsWithGlobalEntities() {
         return ReferenceSets.unmodifiable(this.sectionsWithGlobalEntities);
+    }
+
+    public void renderBufferDebug(GuiGraphics guiGraphics) {
+        this.regions.getArenaAggregator().renderBufferDebug(guiGraphics);
     }
 }
