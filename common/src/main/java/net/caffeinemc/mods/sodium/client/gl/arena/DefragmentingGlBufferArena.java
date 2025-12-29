@@ -2,6 +2,11 @@ package net.caffeinemc.mods.sodium.client.gl.arena;
 
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlMutableBuffer;
 
+// TODO: incremental defragmentation:
+// - intra-buffer defragmentation: shake the biggest free segment to the right, and then all the way to the left, repeat. this only requires knowing the biggest free segment and performing a copy on it that's as big as possible.
+// if it's not possible to move the biggest free segment around because it's smaller than both of the adjacent used segments, try the next smaller free segment, and so on. if there's no free segment that can be moved (and don't just move them back and forth), then perform inter-buffer defragmentation.
+// requires telling owners that specific segments have moved and not just that the buffer has changed and that all segment offsets need to be recalculated.
+// - inter-buffer defragmentation is just regular compaction where we copy the entirety of the buffer to a new buffer, or maybe just some regions of the buffer if particular ones are causing all the fragmentation.
 public class DefragmentingGlBufferArena extends GlBufferArena {
     // profiling has shown that Long2ReferenceRBTreeMap is 58% slower than TreeMap here
     private final SizedTreeMap<GlBufferSegment> freeSegmentsByLength = new SizedTreeMap<>();

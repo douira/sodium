@@ -14,7 +14,6 @@ import java.util.function.Consumer;
 // TODO: if the required capacity is huge, maybe it shouldn't be shared, or we should overshoot it more?
 // TODO: when moving region to a new buffer, return the next shared arena, or decide that the request is too big and return a regular single-owner
 // TODO: allow user to change the vram pre-allocation size via config, but auto-scale regardless if it's too small
-// TODO: incremental defragmentation
 // TODO: compaction when multiple shared arenas together have less than 70% of a single one used
 // TODO: deallocate shared arenas when they become empty, don't re-use more than some limited amount of memory when deallocated shared arena becomes freed
 public class ArenaAggregator {
