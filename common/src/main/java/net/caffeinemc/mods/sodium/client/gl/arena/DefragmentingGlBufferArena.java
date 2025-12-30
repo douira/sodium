@@ -142,14 +142,19 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         long freeEnd = biggestFree.getEnd();
         long freeOffset = biggestFree.getOffset();
 
-        long accumulatedSize = 0;
+        long totalMoveLength = 0;
         var toMove = biggestFree.getNext();
         var destinationPrev = biggestFree.getPrev();
         var ownersToNotify = new ReferenceOpenHashSet<RegionAllocatorHandle>();
-        while (toMove != null && !toMove.isFree() && accumulatedSize + toMove.getLength() <= freeLength) {
+        while (toMove != null && !toMove.isFree()) {
+            var newTotalMoveLength = totalMoveLength + toMove.getLength();
+            if (newTotalMoveLength > freeLength) {
+                break;
+            }
+
             // this segment does still fit, add it
-            toMove.setOffset(freeOffset + accumulatedSize);
-            accumulatedSize += toMove.getLength();
+            toMove.setOffset(freeOffset + totalMoveLength);
+            totalMoveLength = newTotalMoveLength;
             ownersToNotify.add(toMove.getOwner());
 
             // perform linkages with prev
@@ -168,13 +173,15 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         // toMove is now the first segment that doesn't fit, or null, or free
 
         // if there's anything small enough to move
-        if (accumulatedSize > 0) {
+        if (totalMoveLength > 0) {
             // execute the copy of the continuous segments
             commands.copyBufferSubData(this.arenaBuffer, this.arenaBuffer,
                     freeEnd * this.stride,
                     freeOffset * this.stride,
-                    accumulatedSize * this.stride
+                    totalMoveLength * this.stride
             );
+            totalCopyCount++;
+            totalCopyBytes += totalMoveLength * this.stride;
 
             // fix linkages of the last moved segment to the free segment
             destinationPrev.setNext(biggestFree);
@@ -182,7 +189,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
 
             // adjust the free segment
             this.removeFreeSegment(biggestFree);
-            biggestFree.setOffset(freeOffset + accumulatedSize);
+            biggestFree.setOffset(freeOffset + totalMoveLength);
 
             // check for merging with next free segment
             if (toMove != null && toMove.isFree()) {
@@ -217,14 +224,19 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         long freeEnd = biggestFree.getEnd();
         long freeOffset = biggestFree.getOffset();
 
-        long accumulatedSize = 0;
+        long totalMoveLength = 0;
         var toMove = biggestFree.getPrev();
         var destinationNext = biggestFree.getNext();
         var ownersToNotify = new ReferenceOpenHashSet<RegionAllocatorHandle>();
-        while (toMove != this.head && !toMove.isFree() && accumulatedSize + toMove.getLength() <= freeLength) {
+        while (toMove != this.head && !toMove.isFree()) {
+            var newTotalMoveLength = totalMoveLength + toMove.getLength();
+            if (newTotalMoveLength > freeLength) {
+                break;
+            }
+
             // this segment does still fit, add it
-            accumulatedSize += toMove.getLength();
-            toMove.setOffset(freeEnd - accumulatedSize);
+            totalMoveLength = newTotalMoveLength;
+            toMove.setOffset(freeEnd - totalMoveLength);
             ownersToNotify.add(toMove.getOwner());
 
             // perform linkages with next
@@ -240,13 +252,15 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         // toMove is now the first segment that doesn't fit, or null, or free
 
         // if there's anything small enough to move
-        if (accumulatedSize > 0) {
+        if (totalMoveLength > 0) {
             // execute the copy of the continuous segments
             commands.copyBufferSubData(this.arenaBuffer, this.arenaBuffer,
-                    (freeOffset - accumulatedSize) * this.stride,
-                    (freeEnd - accumulatedSize) * this.stride,
-                    accumulatedSize * this.stride
+                    (freeOffset - totalMoveLength) * this.stride,
+                    (freeEnd - totalMoveLength) * this.stride,
+                    totalMoveLength * this.stride
             );
+            totalCopyCount++;
+            totalCopyBytes += totalMoveLength * this.stride;
 
             // fix linkages of the last moved segment to the free segment
             destinationNext.setPrev(biggestFree);
@@ -256,10 +270,11 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
             this.removeFreeSegment(biggestFree);
 
             // TODO: in weird rare cases this results in a negative offset, why?
-            if (freeOffset < accumulatedSize) {
+            // run with asserts enabled in mangrove forest: the overlapping segments are probably the cause
+            if (freeOffset < totalMoveLength) {
                 throw new IllegalStateException("Invalid segments resulted in negative offset during defragmentation");
             }
-            biggestFree.setOffset(freeOffset - accumulatedSize);
+            biggestFree.setOffset(freeOffset - totalMoveLength);
 
             // check for merging with prev free segment
             if (toMove != null && toMove.isFree()) {
