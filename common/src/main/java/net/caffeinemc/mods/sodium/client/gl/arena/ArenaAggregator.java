@@ -26,7 +26,7 @@ public class ArenaAggregator {
     private static final long SHARED_GEOMETRY_SIZE = MathUtil.fromMib(256);
     private static final long SHARED_INDEX_SIZE = MathUtil.fromMib(16);
     private static final int DEFRAG_COPIES_PER_FRAME_BUDGET = 32;
-    private static final long DEFRAG_BYTES_PER_FRAME_BUDGET = MathUtil.fromMib(8);
+    private static final long DEFRAG_BYTES_PER_FRAME_BUDGET = MathUtil.fromMib(32);
 
     private static final GlBufferUsage BUFFER_USAGE = GlBufferUsage.STATIC_DRAW;
 

@@ -10,9 +10,11 @@ import net.minecraft.util.Mth;
 import java.util.Collection;
 
 public class DefragmentingGlBufferArena extends GlBufferArena {
-    private static final float DEFRAG_MIN_SEEN_FREE_FRACTION = 0.95f;
+    private static final float DEFRAG_STOP_AFTER_FREE_SEEN_FRACTION = 0.95f;
+    private static final float DEFRAG_MIN_FREE_FRACTION = 0.03f;
     private static final int MAX_DEFRAG_STEPS = 5;
     private static final int FRAGMENTATION_DEGREE_SAMPLES = 3;
+    private static final int BEST_TARGET_SEARCH_COUNT = 5;
 
     // profiling has shown that Long2ReferenceRBTreeMap is 58% slower than TreeMap here
     private final SizedTreeMap<GlBufferSegment> freeSegmentsByLength = new SizedTreeMap<>();
@@ -67,8 +69,14 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
             return;
         }
 
+        // stop if there's very little free space
+        long free = this.capacity - this.used;
+        if ((float) free / this.capacity < DEFRAG_MIN_FREE_FRACTION) {
+            return;
+        }
+
         var descendingFreeSegments = this.freeSegmentsByLength.descendingMap().values();
-        long requiredSeenFreeSize = (long) ((this.capacity - this.used) * DEFRAG_MIN_SEEN_FREE_FRACTION);
+        long requiredSeenFreeSize = (long) (free * DEFRAG_STOP_AFTER_FREE_SEEN_FRACTION);
 
         // calculate number of defragmentation steps to perform based on fragmentation degree
         float fragmentationDegree = this.calculateFragmentationDegree(descendingFreeSegments);
@@ -100,10 +108,10 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
 
             // stop if we've already seen enough free and defragmentation must be low
             if (seenFreeSize >= requiredSeenFreeSize) {
-                break;
+                return;
             }
 
-            if (defragmentDirectional(commands, budget, biggestFree, secondBiggestFree)) {
+            if (defragmentDirectional(commands, budget, biggestFree, descendingFreeSegments)) {
                 return;
             }
         }
@@ -112,7 +120,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         this.defragmentRight = !this.defragmentRight;
     }
 
-    private boolean defragmentDirectional(CommandList commands, ArenaAggregator.DefragBudget budget, GlBufferSegment biggestFree, GlBufferSegment secondBiggestFree) {
+    private boolean defragmentDirectional(CommandList commands, ArenaAggregator.DefragBudget budget, GlBufferSegment biggestFree, Collection<GlBufferSegment> biggestSegments) {
         // determine the direction we want to move it
         var next = biggestFree.getNext();
         var prev = biggestFree.getPrev();
@@ -126,9 +134,27 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         // TODO: more smartly determine whether moving the free space in any particular direction would actually gain us anything, i.e. if there's no significant amount of free segments to be combined with in this direction, don't even try. maybe just get the top N biggest free segments and move them towards each other preferentially? -> use while loops and collect the biggest and second biggest and try to move the biggest towards the second biggest, and if that doesn't work, in the other direction, and if that doesn't work, try the second and third biggest, etc.
         // TODO: byte and copy count budgeting, integrate with time estimation?
         var defragmentRightLocal = this.defragmentRight;
-        if (secondBiggestFree != null) {
-            defragmentRightLocal = biggestFree.getOffset() < secondBiggestFree.getOffset();
+
+        // if there are any, move towards the closest segments weighted by size
+        var ownOffset = biggestFree.getOffset();
+        long lowestDistance = Long.MAX_VALUE;
+        var count = 0;
+        for (var candidate : biggestSegments) {
+            if (candidate == biggestFree) {
+                continue;
+            }
+            if (count++ >= BEST_TARGET_SEARCH_COUNT) {
+                break;
+            }
+            long candidateOffset = candidate.getOffset();
+            var candidateIsRight = candidateOffset > ownOffset;
+            long distance = candidateIsRight ? candidateOffset - biggestFree.getEnd() : ownOffset - candidate.getEnd();
+            if (distance < lowestDistance) {
+                lowestDistance = distance;
+                defragmentRightLocal = candidateIsRight;
+            }
         }
+
         if (defragmentRightLocal) {
             if (next != null && defragmentRightwards(commands, biggestFree, budget)) {
                 this.checkAssertions();
@@ -143,7 +169,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         return false;
     }
 
-    private boolean defragmentRightwards(CommandList commands, GlBufferSegment biggestFree, ArenaAggregator.DefragBudget budget) {
+    private boolean defragmentRightwards(CommandList commands, GlBufferSegment biggestFree, net.caffeinemc.mods.sodium.client.gl.arena.ArenaAggregator.DefragBudget budget) {
         long freeLength = biggestFree.getLength();
         long freeEnd = biggestFree.getEnd();
         long freeOffset = biggestFree.getOffset();
@@ -225,7 +251,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
     }
 
     // note that there is no this.tail
-    private boolean defragmentLeftwards(CommandList commands, GlBufferSegment biggestFree, ArenaAggregator.DefragBudget budget) {
+    private boolean defragmentLeftwards(CommandList commands, GlBufferSegment biggestFree, net.caffeinemc.mods.sodium.client.gl.arena.ArenaAggregator.DefragBudget budget) {
         long freeLength = biggestFree.getLength();
         long freeEnd = biggestFree.getEnd();
         long freeOffset = biggestFree.getOffset();
