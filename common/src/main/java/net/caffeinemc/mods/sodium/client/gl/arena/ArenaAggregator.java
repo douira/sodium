@@ -7,11 +7,11 @@ import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.gui.Colors;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkMeshFormats;
+import net.caffeinemc.mods.sodium.client.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -23,8 +23,10 @@ import java.util.function.Consumer;
 public class ArenaAggregator {
     // how much bigger than requested a buffer can be to be considered for reuse
     public static final float MAX_BUFFER_REUSE_SIZE_FACTOR = 1.4f;
-    private static final long SHARED_GEOMETRY_SIZE = 256 * 1024L * 1024L;
-    private static final long SHARED_INDEX_SIZE = 32 * 1024L * 1024L;
+    private static final long SHARED_GEOMETRY_SIZE = MathUtil.fromMib(256);
+    private static final long SHARED_INDEX_SIZE = MathUtil.fromMib(16);
+    private static final int DEFRAG_COPIES_PER_FRAME_BUDGET = 32;
+    private static final long DEFRAG_BYTES_PER_FRAME_BUDGET = MathUtil.fromMib(8);
 
     private static final GlBufferUsage BUFFER_USAGE = GlBufferUsage.STATIC_DRAW;
 
@@ -35,7 +37,55 @@ public class ArenaAggregator {
     // all shared arenas, keyed by stride, and then sorted by the biggest contiguous free block size they have to offer
     private final DataType index = new DataType("Index", Integer.BYTES, SHARED_INDEX_SIZE);
     private final DataType geometry = new DataType("Geometry", ChunkMeshFormats.COMPACT.getVertexFormat().getStride(), SHARED_GEOMETRY_SIZE);
-    private final Collection<DataType> dataTypes = List.of(this.index, this.geometry);
+    private final List<DataType> dataTypes = List.of(this.index, this.geometry);
+    private int arenaDefragOffset = 0; // round-robin index for defragmentation
+    private int totalCopyCount = 0;
+    private long totalCopyBytes = 0;
+
+    public static class DefragBudget {
+        private final int startCopyCount;
+        private final long startCopyBytes;
+        private int copyCount;
+        private long copyBytes;
+        private long copyElements;
+
+        public DefragBudget(int copyCount, long copyBytes) {
+            this.startCopyCount = copyCount;
+            this.startCopyBytes = copyBytes;
+            this.copyCount = copyCount;
+            this.copyBytes = copyBytes;
+        }
+
+        public void setupElementCopy(int elementSize) {
+            this.copyElements = this.copyBytes / elementSize;
+        }
+
+        public void consumeElementCopy(long elementsCopied, long bytesCopied) {
+            this.copyCount--;
+            this.copyBytes -= bytesCopied;
+            this.copyElements -= elementsCopied;
+        }
+
+        public boolean isElementBudgetEmpty() {
+            return this.copyCount <= 0 || this.copyBytes <= 0 || this.copyElements <= 0;
+        }
+
+        public boolean isBudgetEmpty() {
+            return this.copyCount <= 0 || this.copyBytes <= 0;
+        }
+
+        public boolean elementCopyExceedsBudget(long elements) {
+            return elements > this.copyElements;
+        }
+
+        public int getUsedCopyCount() {
+            return this.startCopyCount - this.copyCount;
+        }
+
+        public long getUsedCopyBytes() {
+            return this.startCopyBytes - this.copyBytes;
+        }
+    }
 
     private class DataType {
         final String name;
@@ -91,6 +141,18 @@ public class ArenaAggregator {
                 allocated += arenaEntry.getDeviceAllocatedMemory();
             }
             return allocated;
+        }
+
+        void defragmentIncremental(CommandList commands, DefragBudget budget) {
+            budget.setupElementCopy(this.stride);
+            for (int i = 0; i < this.arenas.size(); i++) {
+                int arenaIndex = (ArenaAggregator.this.arenaDefragOffset + i) % this.arenas.size();
+                var arenaEntry = this.arenas.get(arenaIndex);
+                arenaEntry.defragmentIncremental(commands, budget);
+                if (budget.isElementBudgetEmpty()) {
+                    break;
+                }
+            }
         }
     }
 
@@ -201,12 +263,23 @@ public class ArenaAggregator {
     }
 
     public void update(CommandList commands) {
+        // TODO: adjust based on total memory usage? if we have more memory usage we need to move more of it around
+        var budget = new DefragBudget(DEFRAG_COPIES_PER_FRAME_BUDGET, DEFRAG_BYTES_PER_FRAME_BUDGET);
+
         // perform some amount of defragmentation on update
-        for (var dataType : this.dataTypes) {
-            for (var arenaEntry : dataType.arenas) {
-                arenaEntry.defragmentIncremental(commands);
+        var typeOffset = (int) Math.floor(Math.random() * this.dataTypes.size());
+        for (int i = 0; i < this.dataTypes.size(); i++) {
+            int dataTypeIndex = (typeOffset + i) % this.dataTypes.size();
+            var dataType = this.dataTypes.get(dataTypeIndex);
+            dataType.defragmentIncremental(commands, budget);
+            if (budget.isBudgetEmpty()) {
+                break;
             }
         }
+
+        this.totalCopyCount += budget.getUsedCopyCount();
+        this.totalCopyBytes += budget.getUsedCopyBytes();
+        this.arenaDefragOffset++;
     }
 
     public long getGeometryDeviceUsedMemory() {
@@ -261,12 +334,12 @@ public class ArenaAggregator {
         int y = verticalPadding;
         for (var dataType : this.dataTypes) {
             // dataType.name + " Shared Arenas: " + dataType.arenas.size()
-            var str = String.format("%s Shared Arenas: %d x %d MiB (Used: %.2f MiB / Allocated: %.2f MiB)",
+            var str = String.format("%s Shared Arenas: %d x %d MiB (Used: %d MiB / Allocated: %d MiB)",
                     dataType.name,
                     dataType.arenas.size(),
-                    dataType.sharedSizeBytes / (1024 * 1024),
-                    dataType.getDeviceUsedMemory() / (1024.0 * 1024.0),
-                    dataType.getDeviceAllocatedMemory() / (1024.0 * 1024.0));
+                    MathUtil.toMib(dataType.sharedSizeBytes),
+                    MathUtil.toMib(dataType.getDeviceUsedMemory()),
+                    MathUtil.toMib(dataType.getDeviceAllocatedMemory()));
             graphics.drawString(Minecraft.getInstance().font, str, leftPadding, y, Colors.FOREGROUND);
             y += verticalPadding;
             var x = leftPadding;
@@ -286,10 +359,16 @@ public class ArenaAggregator {
         }
 
         // show total copies and bytes
-        var copyCount = DefragmentingGlBufferArena.totalCopyCount;
-        var copyBytes = DefragmentingGlBufferArena.totalCopyBytes;
+        graphics.drawString(Minecraft.getInstance().font,
+                String.format("Defragmentation copies: %d (%d MiB)",
+                        this.totalCopyCount, MathUtil.toMib(this.totalCopyBytes)),
+                leftPadding, 30, Colors.FOREGROUND);
 
-        var copyStr = String.format("Defragmentation copies: %d (%.2f MiB)", copyCount, copyBytes / (1024.0 * 1024.0));
-        graphics.drawString(Minecraft.getInstance().font, copyStr, leftPadding, 30, Colors.FOREGROUND);
+        // budget per frame
+        graphics.drawString(Minecraft.getInstance().font,
+                String.format("Defragmentation budget per frame: %d copies / %d MiB",
+                        DEFRAG_COPIES_PER_FRAME_BUDGET,
+                        MathUtil.toMib(DEFRAG_BYTES_PER_FRAME_BUDGET)),
+                leftPadding, 40, Colors.FOREGROUND);
     }
 }

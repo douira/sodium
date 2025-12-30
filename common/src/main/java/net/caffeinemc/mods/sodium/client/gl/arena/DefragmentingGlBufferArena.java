@@ -13,8 +13,6 @@ import java.util.Set;
 public class DefragmentingGlBufferArena extends GlBufferArena {
     private static final float DEFRAG_MIN_SEEN_FREE_FRACTION = 0.95f;
     public static final int MAX_DEFRAG_STEPS = 5;
-    public static long totalCopyCount = 0;
-    public static long totalCopyBytes = 0;
 
     // profiling has shown that Long2ReferenceRBTreeMap is 58% slower than TreeMap here
     private final SizedTreeMap<GlBufferSegment> freeSegmentsByLength = new SizedTreeMap<>();
@@ -63,7 +61,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         return (float) (totalFreeSize - biggestFreeTotalSize) / (float) this.capacity;
     }
 
-    protected void defragmentIncremental(CommandList commands) {
+    protected void defragmentIncremental(CommandList commands, ArenaAggregator.DefragBudget budget) {
         // don't defragment if there's only one free segment
         if (this.freeSegmentsByLength.size() <= 1) {
             return;
@@ -77,7 +75,10 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         int defragmentationSteps = calculateDefragmentationSteps(fragmentationDegree);
 
         for (int i = 0; i < defragmentationSteps; i++) {
-            defragmentationStep(commands, descendingFreeSegments, requiredSeenFreeSize);
+            defragmentationStep(commands, descendingFreeSegments, requiredSeenFreeSize, budget);
+            if (budget.isElementBudgetEmpty()) {
+                break;
+            }
         }
     }
 
@@ -85,7 +86,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         return Mth.lerpInt(fragmentationDegree, 1, MAX_DEFRAG_STEPS + 1);
     }
 
-    private void defragmentationStep(CommandList commands, Set<Map.Entry<Long, GlBufferSegment>> descendingFreeSegments, long requiredSeenFreeSize) {
+    private void defragmentationStep(CommandList commands, Set<Map.Entry<Long, GlBufferSegment>> descendingFreeSegments, long requiredSeenFreeSize, ArenaAggregator.DefragBudget budget) {
         // find the biggest free segment that can receive defragmentation
         long seenFreeSize = 0;
         var it = descendingFreeSegments.iterator();
@@ -121,12 +122,12 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
                 defragmentRightLocal = biggestFree.getOffset() < secondBiggestFree.getOffset();
             }
             if (defragmentRightLocal) {
-                if (next != null && defragmentRightwards(commands, biggestFree)) {
+                if (next != null && defragmentRightwards(commands, biggestFree, budget)) {
                     this.checkAssertions();
                     return;
                 }
             } else {
-                if (prev != this.head && biggestFree != this.head && defragmentLeftwards(commands, biggestFree)) {
+                if (prev != this.head && biggestFree != this.head && defragmentLeftwards(commands, biggestFree, budget)) {
                     this.checkAssertions();
                     return;
                 }
@@ -137,7 +138,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         this.defragmentRight = !this.defragmentRight;
     }
 
-    private boolean defragmentRightwards(CommandList commands, GlBufferSegment biggestFree) {
+    private boolean defragmentRightwards(CommandList commands, GlBufferSegment biggestFree, ArenaAggregator.DefragBudget budget) {
         long freeLength = biggestFree.getLength();
         long freeEnd = biggestFree.getEnd();
         long freeOffset = biggestFree.getOffset();
@@ -148,7 +149,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         var ownersToNotify = new ReferenceOpenHashSet<RegionAllocatorHandle>();
         while (toMove != null && !toMove.isFree()) {
             var newTotalMoveLength = totalMoveLength + toMove.getLength();
-            if (newTotalMoveLength > freeLength) {
+            if (newTotalMoveLength > freeLength || totalMoveLength != 0 && budget.elementCopyExceedsBudget(newTotalMoveLength)) {
                 break;
             }
 
@@ -175,13 +176,13 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         // if there's anything small enough to move
         if (totalMoveLength > 0) {
             // execute the copy of the continuous segments
+            long bytes = totalMoveLength * this.stride;
             commands.copyBufferSubData(this.arenaBuffer, this.arenaBuffer,
                     freeEnd * this.stride,
                     freeOffset * this.stride,
-                    totalMoveLength * this.stride
+                    bytes
             );
-            totalCopyCount++;
-            totalCopyBytes += totalMoveLength * this.stride;
+            budget.consumeElementCopy(totalMoveLength, bytes);
 
             // fix linkages of the last moved segment to the free segment
             destinationPrev.setNext(biggestFree);
@@ -219,7 +220,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
     }
 
     // note that there is no this.tail
-    private boolean defragmentLeftwards(CommandList commands, GlBufferSegment biggestFree) {
+    private boolean defragmentLeftwards(CommandList commands, GlBufferSegment biggestFree, ArenaAggregator.DefragBudget budget) {
         long freeLength = biggestFree.getLength();
         long freeEnd = biggestFree.getEnd();
         long freeOffset = biggestFree.getOffset();
@@ -230,7 +231,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         var ownersToNotify = new ReferenceOpenHashSet<RegionAllocatorHandle>();
         while (toMove != this.head && !toMove.isFree()) {
             var newTotalMoveLength = totalMoveLength + toMove.getLength();
-            if (newTotalMoveLength > freeLength) {
+            if (newTotalMoveLength > freeLength || totalMoveLength != 0 && budget.elementCopyExceedsBudget(newTotalMoveLength)) {
                 break;
             }
 
@@ -254,13 +255,13 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         // if there's anything small enough to move
         if (totalMoveLength > 0) {
             // execute the copy of the continuous segments
+            long bytes = totalMoveLength * this.stride;
             commands.copyBufferSubData(this.arenaBuffer, this.arenaBuffer,
                     (freeOffset - totalMoveLength) * this.stride,
                     (freeEnd - totalMoveLength) * this.stride,
-                    totalMoveLength * this.stride
+                    bytes
             );
-            totalCopyCount++;
-            totalCopyBytes += totalMoveLength * this.stride;
+            budget.consumeElementCopy(totalMoveLength, bytes);
 
             // fix linkages of the last moved segment to the free segment
             destinationNext.setPrev(biggestFree);

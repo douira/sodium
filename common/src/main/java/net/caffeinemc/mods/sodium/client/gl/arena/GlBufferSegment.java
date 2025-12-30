@@ -2,6 +2,7 @@ package net.caffeinemc.mods.sodium.client.gl.arena;
 
 import net.caffeinemc.mods.sodium.client.util.UInt32;
 
+// TODO: fine-grained segment update notification to avoid re-writing the entire render data on small changes
 public class GlBufferSegment implements SizedTreeMap.Sized {
     private AllocatorBase allocator;
     private RegionAllocatorHandle owner;
