@@ -10,6 +10,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.Mth;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -166,10 +167,7 @@ public class GlBufferArena implements AllocatorBase {
 
     void executeCopyCommands(CommandList commandList, Collection<PendingBufferCopyCommand> list, GlMutableBuffer srcBufferObj, GlMutableBuffer dstBufferObj) {
         for (PendingBufferCopyCommand cmd : list) {
-            commandList.copyBufferSubData(srcBufferObj, dstBufferObj,
-                    cmd.getReadOffset() * this.stride,
-                    cmd.getWriteOffset() * this.stride,
-                    cmd.getLength() * this.stride);
+            commandList.copyBufferSubData(srcBufferObj, dstBufferObj, cmd.getReadOffset() * this.stride, cmd.getWriteOffset() * this.stride, cmd.getLength() * this.stride);
         }
     }
 
@@ -538,11 +536,14 @@ public class GlBufferArena implements AllocatorBase {
                 color = 0xFF000000; // black
             } else {
                 // color based on owner id
-                var ownerColor = System.identityHashCode(seg.getOwner()) & 0x00FFFFFF;
-                var hsv = ColorARGB.toHSV(ownerColor);
-                hsv[1] = Math.max(0.2f, hsv[1]);
-                hsv[2] = Math.max(0.4f, hsv[2]);
-                color = 0xFF000000 | ownerColor;
+                var owner = seg.getOwner();
+                var ownerHash = System.identityHashCode(owner);
+
+                color = ColorARGB.fromHSV(
+                        (owner.identifier * 0.618033988749895f) % 1.0f,
+                        Mth.map(ownerHash & 0xFF, 0, 0xFF, 0.5f, 1.0f),
+                        Mth.map(ownerHash >> 8 & 0xFF, 0, 0xFF, 0.5f, 1.0f)
+                );
             }
 
             // draw rects with wrapping

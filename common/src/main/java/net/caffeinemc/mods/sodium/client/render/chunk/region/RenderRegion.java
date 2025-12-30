@@ -234,7 +234,7 @@ public class RenderRegion {
         this.sections[sectionIndex] = null;
         this.sectionCount--;
     }
-    
+
     public float getFillFractionInv() {
         return (float) RenderRegion.REGION_SIZE / (float) this.sectionCount;
     }

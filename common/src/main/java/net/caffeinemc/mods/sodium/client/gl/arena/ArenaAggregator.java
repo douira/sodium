@@ -200,6 +200,15 @@ public class ArenaAggregator {
         }
     }
 
+    public void update(CommandList commands) {
+        // perform some amount of defragmentation on update
+        for (var dataType : this.dataTypes) {
+            for (var arenaEntry : dataType.arenas) {
+                arenaEntry.defragmentIncremental(commands);
+            }
+        }
+    }
+
     public long getGeometryDeviceUsedMemory() {
         return this.geometry.getDeviceUsedMemory();
     }
@@ -239,7 +248,8 @@ public class ArenaAggregator {
         int verticalPadding = 10;
         int arenaPadding = 4;
         int targetWidth = graphics.guiWidth() / 2;
-        var totalMapHeight = (graphics.guiHeight() - verticalPadding - 2 * verticalPadding * this.dataTypes.size());
+        int targetHeight = graphics.guiHeight();
+        var totalMapHeight = (targetHeight - verticalPadding - 2 * verticalPadding * this.dataTypes.size());
 
         // count number of maps to adjust heights
         var countOffset = 2;

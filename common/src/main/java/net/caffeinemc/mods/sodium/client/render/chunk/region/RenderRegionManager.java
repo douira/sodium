@@ -44,6 +44,8 @@ public class RenderRegionManager {
         this.stagingBuffer.flip();
 
         try (CommandList commandList = RenderDevice.INSTANCE.createCommandList()) {
+            this.arenaAggregator.update(commandList);
+
             Iterator<RenderRegion> it = this.regions.values()
                     .iterator();
 
@@ -197,7 +199,7 @@ public class RenderRegionManager {
         }
 
         if (needsSharedIndexUpdate) {
-            indexBufferChanged |= translucentStorage.updateSharedIndexData(commandList, resources.getIndexAllocator(), region);
+            indexBufferChanged |= translucentStorage.updateSharedIndexData(commandList, resources.getIndexAllocator());
         }
 
         if (indexBufferChanged) {
@@ -259,7 +261,9 @@ public class RenderRegionManager {
         return instance;
     }
 
-    private record PendingSectionMeshUpload(RenderSection section, int relativeBuiltTime, BuiltSectionMeshParts meshData, TerrainRenderPass pass, PendingUpload vertexUpload) {
+    private record PendingSectionMeshUpload(RenderSection section, int relativeBuiltTime,
+                                            BuiltSectionMeshParts meshData, TerrainRenderPass pass,
+                                            PendingUpload vertexUpload) {
     }
 
     private record PendingSectionIndexBufferUpload(RenderSection section, PendingUpload indexBufferUpload) {

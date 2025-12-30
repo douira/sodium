@@ -145,7 +145,7 @@ public class SectionRenderDataStorage {
      * @param arena The buffer arena to allocate the new buffer from
      * @return true if the arena resized itself
      */
-    public boolean updateSharedIndexData(CommandList commandList, RegionAllocatorHandle arena, RenderRegion owner) {
+    public boolean updateSharedIndexData(CommandList commandList, RegionAllocatorHandle arena) {
         // assumes this.needsSharedIndexUpdate is true when this is called
         this.needsSharedIndexUpdate = false;
 

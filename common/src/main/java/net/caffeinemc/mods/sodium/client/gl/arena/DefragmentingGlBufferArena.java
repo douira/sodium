@@ -1,15 +1,24 @@
 package net.caffeinemc.mods.sodium.client.gl.arena;
 
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlMutableBuffer;
+import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.util.Mth;
 
-// TODO: incremental defragmentation:
-// - intra-buffer defragmentation: shake the biggest free segment to the right, and then all the way to the left, repeat. this only requires knowing the biggest free segment and performing a copy on it that's as big as possible.
-// if it's not possible to move the biggest free segment around because it's smaller than both of the adjacent used segments, try the next smaller free segment, and so on. if there's no free segment that can be moved (and don't just move them back and forth), then perform inter-buffer defragmentation.
-// requires telling owners that specific segments have moved and not just that the buffer has changed and that all segment offsets need to be recalculated.
-// - inter-buffer defragmentation is just regular compaction where we copy the entirety of the buffer to a new buffer, or maybe just some regions of the buffer if particular ones are causing all the fragmentation.
+import java.util.Map;
+import java.util.Set;
+
 public class DefragmentingGlBufferArena extends GlBufferArena {
+    private static final float DEFRAG_MIN_SEEN_FREE_FRACTION = 0.95f;
+    public static final int MAX_DEFRAG_STEPS = 4;
+
     // profiling has shown that Long2ReferenceRBTreeMap is 58% slower than TreeMap here
     private final SizedTreeMap<GlBufferSegment> freeSegmentsByLength = new SizedTreeMap<>();
+
+    // direction to move the biggest free segment in during defragmentation
+    private boolean defragmentRight = true;
 
     protected DefragmentingGlBufferArena(ArenaAggregator parent, GlMutableBuffer initialBuffer, long capacity, int stride) {
         super(parent, initialBuffer, capacity, stride);
@@ -29,6 +38,245 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
 
     public long getBiggestFreeSegmentSize() {
         return this.freeSegmentsByLength.getHighestSize();
+    }
+
+    private float calculateFragmentationDegree(Set<Map.Entry<Long, GlBufferSegment>> givenEntries) {
+        // take the top 3 biggest free segments and sum their sizes
+        long biggestFreeTotalSize = 0;
+        int count = 0;
+        if (givenEntries == null) {
+            givenEntries = this.freeSegmentsByLength.descendingMap().entrySet();
+        }
+        for (var entry : givenEntries) {
+            biggestFreeTotalSize += entry.getValue().getLength();
+            count++;
+            if (count >= 3) {
+                break;
+            }
+        }
+        long totalFreeSize = this.capacity - this.used;
+        if (totalFreeSize == 0) {
+            return 0.0f;
+        }
+        return 1.0f - ((float) biggestFreeTotalSize / (float) totalFreeSize);
+    }
+
+    protected void defragmentIncremental(CommandList commands) {
+        // don't defragment if there's only one free segment
+        if (this.freeSegmentsByLength.size() <= 1) {
+            return;
+        }
+
+        var descendingFreeSegments = this.freeSegmentsByLength.descendingMap().entrySet();
+        long requiredSeenFreeSize = (long) ((this.capacity - this.used) * DEFRAG_MIN_SEEN_FREE_FRACTION);
+
+        // calculate number of defragmentation steps to perform based on fragmentation degree
+        float fragmentationDegree = this.calculateFragmentationDegree(descendingFreeSegments);
+        int defragmentationSteps = calculateDefragmentationSteps(fragmentationDegree);
+
+        for (int i = 0; i < defragmentationSteps; i++) {
+            defragmentationStep(commands, descendingFreeSegments, requiredSeenFreeSize);
+        }
+    }
+
+    private static int calculateDefragmentationSteps(float fragmentationDegree) {
+        return Mth.lerpInt(fragmentationDegree, 1, MAX_DEFRAG_STEPS + 1);
+    }
+
+    private void defragmentationStep(CommandList commands, Set<Map.Entry<Long, GlBufferSegment>> descendingFreeSegments, long requiredSeenFreeSize) {
+        // find the biggest free segment that can receive defragmentation
+        long seenFreeSize = 0;
+        for (var entry : descendingFreeSegments) {
+            var biggestFree = entry.getValue();
+            seenFreeSize += biggestFree.getLength();
+
+            // stop if we've already seen enough free and defragmentation must be low
+            if (seenFreeSize >= requiredSeenFreeSize) {
+                break;
+            }
+
+            // determine the direction we want to move it
+            var next = biggestFree.getNext();
+            var prev = biggestFree.getPrev();
+            if (next == null && prev == this.head) {
+                // violated invariant, only one free segment
+                throw new IllegalStateException("There cannot be multiple free segments if there's no next and the previous is the head");
+            }
+
+            // find as many segments as will fit into the free segment in the chosen direction to move in the opposite direction, which causes the free segment to move in the chosen direction
+            // TODO: this is causing likely the cause of a java.lang.IllegalStateException: segment.prev.end > segment.start: overlapping segments (corrupted) within the segment extraction code
+            // TODO: more smartly determine whether moving the free space in any particular direction would actually gain us anything, i.e. if there's no significant amount of free segments to be combined with in this direction, don't even try. maybe just get the top N biggest free segments and move them towards each other preferentially?
+            if (this.defragmentRight) {
+                if (next != null && defragmentRightwards(commands, biggestFree)) {
+                    this.checkAssertions();
+                    return;
+                }
+            } else {
+                if (prev != this.head && biggestFree != this.head && defragmentLeftwards(commands, biggestFree)) {
+                    this.checkAssertions();
+                    return;
+                }
+            }
+        }
+
+        // no success, go the other way next time
+        this.defragmentRight = !this.defragmentRight;
+    }
+
+    private boolean defragmentRightwards(CommandList commands, GlBufferSegment biggestFree) {
+        long freeLength = biggestFree.getLength();
+        long freeEnd = biggestFree.getEnd();
+        long freeOffset = biggestFree.getOffset();
+
+        long accumulatedSize = 0;
+        var toMove = biggestFree.getNext();
+        var destinationPrev = biggestFree.getPrev();
+        var ownersToNotify = new ReferenceOpenHashSet<RegionAllocatorHandle>();
+        while (toMove != null && !toMove.isFree() && accumulatedSize + toMove.getLength() <= freeLength) {
+            // this segment does still fit, add it
+            toMove.setOffset(freeOffset + accumulatedSize);
+            accumulatedSize += toMove.getLength();
+            ownersToNotify.add(toMove.getOwner());
+
+            // perform linkages with prev
+            if (destinationPrev == null) {
+                // moving to head
+                this.head = toMove;
+            } else {
+                destinationPrev.setNext(toMove);
+            }
+            toMove.setPrev(destinationPrev);
+
+            // get the next segment to check
+            destinationPrev = toMove;
+            toMove = toMove.getNext();
+        }
+        // toMove is now the first segment that doesn't fit, or null, or free
+
+        // if there's anything small enough to move
+        if (accumulatedSize > 0) {
+            // execute the copy of the continuous segments
+            commands.copyBufferSubData(this.arenaBuffer, this.arenaBuffer,
+                    freeEnd * this.stride,
+                    freeOffset * this.stride,
+                    accumulatedSize * this.stride
+            );
+
+            // fix linkages of the last moved segment to the free segment
+            destinationPrev.setNext(biggestFree);
+            biggestFree.setPrev(destinationPrev);
+
+            // adjust the free segment
+            this.removeFreeSegment(biggestFree);
+            biggestFree.setOffset(freeOffset + accumulatedSize);
+
+            // check for merging with next free segment
+            if (toMove != null && toMove.isFree()) {
+                this.removeFreeSegment(toMove);
+                biggestFree.setLength(biggestFree.getLength() + toMove.getLength());
+                biggestFree.setNext(toMove.getNext());
+                if (toMove.getNext() != null) {
+                    toMove.getNext().setPrev(biggestFree);
+                }
+            } else {
+                biggestFree.setNext(toMove);
+                if (toMove != null) {
+                    toMove.setPrev(biggestFree);
+                }
+            }
+
+            this.addFreeSegment(biggestFree);
+
+            for (var owner : ownersToNotify) {
+                owner.notifyBufferChanged(commands);
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    // note that there is no this.tail
+    private boolean defragmentLeftwards(CommandList commands, GlBufferSegment biggestFree) {
+        long freeLength = biggestFree.getLength();
+        long freeEnd = biggestFree.getEnd();
+        long freeOffset = biggestFree.getOffset();
+
+        long accumulatedSize = 0;
+        var toMove = biggestFree.getPrev();
+        var destinationNext = biggestFree.getNext();
+        var ownersToNotify = new ReferenceOpenHashSet<RegionAllocatorHandle>();
+        while (toMove != this.head && !toMove.isFree() && accumulatedSize + toMove.getLength() <= freeLength) {
+            // this segment does still fit, add it
+            accumulatedSize += toMove.getLength();
+            toMove.setOffset(freeEnd - accumulatedSize);
+            ownersToNotify.add(toMove.getOwner());
+
+            // perform linkages with next
+            if (destinationNext != null) {
+                destinationNext.setPrev(toMove);
+            }
+            toMove.setNext(destinationNext);
+
+            // get the next segment to check
+            destinationNext = toMove;
+            toMove = toMove.getPrev();
+        }
+        // toMove is now the first segment that doesn't fit, or null, or free
+
+        // if there's anything small enough to move
+        if (accumulatedSize > 0) {
+            // execute the copy of the continuous segments
+            commands.copyBufferSubData(this.arenaBuffer, this.arenaBuffer,
+                    (freeOffset - accumulatedSize) * this.stride,
+                    (freeEnd - accumulatedSize) * this.stride,
+                    accumulatedSize * this.stride
+            );
+
+            // fix linkages of the last moved segment to the free segment
+            destinationNext.setPrev(biggestFree);
+            biggestFree.setNext(destinationNext);
+
+            // adjust the free segment
+            this.removeFreeSegment(biggestFree);
+
+            // TODO: in weird rare cases this results in a negative offset, why?
+            if (freeOffset < accumulatedSize) {
+                throw new IllegalStateException("Invalid segments resulted in negative offset during defragmentation");
+            }
+            biggestFree.setOffset(freeOffset - accumulatedSize);
+
+            // check for merging with prev free segment
+            if (toMove != null && toMove.isFree()) {
+                this.removeFreeSegment(toMove);
+                biggestFree.setOffset(toMove.getOffset());
+                biggestFree.setLength(freeLength + toMove.getLength());
+                biggestFree.setPrev(toMove.getPrev());
+                if (toMove.getPrev() != null) {
+                    toMove.getPrev().setNext(biggestFree);
+                } else {
+                    this.head = biggestFree;
+                }
+            } else {
+                biggestFree.setPrev(toMove);
+                if (toMove != null) {
+                    toMove.setNext(biggestFree);
+                } else {
+                    this.head = biggestFree;
+                }
+            }
+
+            this.addFreeSegment(biggestFree);
+
+            for (var owner : ownersToNotify) {
+                owner.notifyBufferChanged(commands);
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     @Override
@@ -122,5 +370,18 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         }
 
         this.checkAssertions();
+    }
+
+    @Override
+    public void renderDebugMap(GuiGraphics graphics, int x, int y, int drawWidth, int drawHeight) {
+        super.renderDebugMap(graphics, x, y, drawWidth, drawHeight);
+
+        // render measure of fragmentation degree and copies performed per frame
+        float fragmentationDegree = this.calculateFragmentationDegree(null);
+        int defragmentationSteps = calculateDefragmentationSteps(fragmentationDegree);
+        int barLength = (int) (drawHeight * fragmentationDegree);
+        var thickness = 3;
+        graphics.fill(x, y, x + thickness, y + barLength, 0xCFFFFFFF);
+        graphics.drawString(Minecraft.getInstance().font, Integer.toString(defragmentationSteps), x, y, 0xFFFFFFFF);
     }
 }
