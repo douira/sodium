@@ -86,8 +86,14 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
     private void defragmentationStep(CommandList commands, Set<Map.Entry<Long, GlBufferSegment>> descendingFreeSegments, long requiredSeenFreeSize) {
         // find the biggest free segment that can receive defragmentation
         long seenFreeSize = 0;
-        for (var entry : descendingFreeSegments) {
-            var biggestFree = entry.getValue();
+        var it = descendingFreeSegments.iterator();
+        Map.Entry<Long, GlBufferSegment> biggestEntry = null;
+        var secondBiggestEntry = it.next();
+        while (it.hasNext() || biggestEntry != null) {
+            biggestEntry = secondBiggestEntry;
+            secondBiggestEntry = it.hasNext() ? it.next() : null;
+
+            var biggestFree = biggestEntry.getValue();
             seenFreeSize += biggestFree.getLength();
 
             // stop if we've already seen enough free and defragmentation must be low
@@ -105,8 +111,14 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
 
             // find as many segments as will fit into the free segment in the chosen direction to move in the opposite direction, which causes the free segment to move in the chosen direction
             // TODO: this is causing likely the cause of a java.lang.IllegalStateException: segment.prev.end > segment.start: overlapping segments (corrupted) within the segment extraction code
-            // TODO: more smartly determine whether moving the free space in any particular direction would actually gain us anything, i.e. if there's no significant amount of free segments to be combined with in this direction, don't even try. maybe just get the top N biggest free segments and move them towards each other preferentially?
-            if (this.defragmentRight) {
+            // TODO: more smartly determine whether moving the free space in any particular direction would actually gain us anything, i.e. if there's no significant amount of free segments to be combined with in this direction, don't even try. maybe just get the top N biggest free segments and move them towards each other preferentially? -> use while loops and collect the biggest and second biggest and try to move the biggest towards the second biggest, and if that doesn't work, in the other direction, and if that doesn't work, try the second and third biggest, etc.
+            // TODO: byte and copy count budgeting, integrate with time estimation?
+            var secondBiggestFree = secondBiggestEntry != null ? secondBiggestEntry.getValue() : null;
+            var defragmentRightLocal = this.defragmentRight;
+            if (secondBiggestFree != null) {
+                defragmentRightLocal = biggestFree.getOffset() < secondBiggestFree.getOffset();
+            }
+            if (defragmentRightLocal) {
                 if (next != null && defragmentRightwards(commands, biggestFree)) {
                     this.checkAssertions();
                     return;
