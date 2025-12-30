@@ -284,5 +284,12 @@ public class ArenaAggregator {
 
             y += mapHeight + verticalPadding;
         }
+
+        // show total copies and bytes
+        var copyCount = DefragmentingGlBufferArena.totalCopyCount;
+        var copyBytes = DefragmentingGlBufferArena.totalCopyBytes;
+
+        var copyStr = String.format("Defragmentation copies: %d (%.2f MiB)", copyCount, copyBytes / (1024.0 * 1024.0));
+        graphics.drawString(Minecraft.getInstance().font, copyStr, leftPadding, 30, Colors.FOREGROUND);
     }
 }

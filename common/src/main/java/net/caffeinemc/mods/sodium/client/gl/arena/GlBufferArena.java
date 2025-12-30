@@ -529,6 +529,7 @@ public class GlBufferArena implements AllocatorBase {
         var pixelCount = width * height;
         var seg = this.head;
         double pos = 0;
+        var sameOwnerSegments = 0;
         while (seg != null) {
             double length = ((double) seg.getLength() / this.capacity) * pixelCount;
             int color;
@@ -539,10 +540,16 @@ public class GlBufferArena implements AllocatorBase {
                 var owner = seg.getOwner();
                 var ownerHash = System.identityHashCode(owner);
 
+                if (seg.getPrev() != null && seg.getPrev().getOwner() == owner) {
+                    sameOwnerSegments++;
+                } else {
+                    sameOwnerSegments = 0;
+                }
                 color = ColorARGB.fromHSV(
                         (owner.identifier * 0.618033988749895f) % 1.0f,
                         Mth.map(ownerHash & 0xFF, 0, 0xFF, 0.5f, 1.0f),
-                        Mth.map(ownerHash >> 8 & 0xFF, 0, 0xFF, 0.5f, 1.0f)
+                        Mth.map(ownerHash >> 8 & 0xFF, 0, 0xFF, 0.5f, 0.8f) +
+                                Mth.map(sameOwnerSegments & 0b11, 0, 0b11, 0.0f, 0.2f)
                 );
             }
 

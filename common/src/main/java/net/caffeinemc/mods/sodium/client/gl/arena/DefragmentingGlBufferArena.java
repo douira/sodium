@@ -12,7 +12,9 @@ import java.util.Set;
 
 public class DefragmentingGlBufferArena extends GlBufferArena {
     private static final float DEFRAG_MIN_SEEN_FREE_FRACTION = 0.95f;
-    public static final int MAX_DEFRAG_STEPS = 4;
+    public static final int MAX_DEFRAG_STEPS = 5;
+    public static long totalCopyCount = 0;
+    public static long totalCopyBytes = 0;
 
     // profiling has shown that Long2ReferenceRBTreeMap is 58% slower than TreeMap here
     private final SizedTreeMap<GlBufferSegment> freeSegmentsByLength = new SizedTreeMap<>();
@@ -58,7 +60,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         if (totalFreeSize == 0) {
             return 0.0f;
         }
-        return 1.0f - ((float) biggestFreeTotalSize / (float) totalFreeSize);
+        return (float) (totalFreeSize - biggestFreeTotalSize) / (float) this.capacity;
     }
 
     protected void defragmentIncremental(CommandList commands) {
