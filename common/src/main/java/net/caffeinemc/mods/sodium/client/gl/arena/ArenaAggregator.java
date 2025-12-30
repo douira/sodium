@@ -24,7 +24,7 @@ public class ArenaAggregator {
     // how much bigger than requested a buffer can be to be considered for reuse
     public static final float MAX_BUFFER_REUSE_SIZE_FACTOR = 1.4f;
     private static final long SHARED_GEOMETRY_SIZE = MathUtil.fromMib(256);
-    private static final long SHARED_INDEX_SIZE = MathUtil.fromMib(16);
+    private static final long SHARED_INDEX_SIZE = MathUtil.fromMib(32);
     private static final int DEFRAG_COPIES_PER_FRAME_BUDGET = 32;
     private static final long DEFRAG_BYTES_PER_FRAME_BUDGET = MathUtil.fromMib(32);
 
