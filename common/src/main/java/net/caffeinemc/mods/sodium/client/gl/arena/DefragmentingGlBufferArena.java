@@ -7,12 +7,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.Mth;
 
-import java.util.Map;
-import java.util.Set;
+import java.util.Collection;
 
 public class DefragmentingGlBufferArena extends GlBufferArena {
     private static final float DEFRAG_MIN_SEEN_FREE_FRACTION = 0.95f;
-    public static final int MAX_DEFRAG_STEPS = 5;
+    private static final int MAX_DEFRAG_STEPS = 5;
+    private static final int FRAGMENTATION_DEGREE_SAMPLES = 3;
 
     // profiling has shown that Long2ReferenceRBTreeMap is 58% slower than TreeMap here
     private final SizedTreeMap<GlBufferSegment> freeSegmentsByLength = new SizedTreeMap<>();
@@ -40,17 +40,17 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         return this.freeSegmentsByLength.getHighestSize();
     }
 
-    private float calculateFragmentationDegree(Set<Map.Entry<Long, GlBufferSegment>> givenEntries) {
-        // take the top 3 biggest free segments and sum their sizes
+    private float calculateFragmentationDegree(Collection<GlBufferSegment> givenSegments) {
+        // take a few of the biggest free segments and sum their sizes
         long biggestFreeTotalSize = 0;
         int count = 0;
-        if (givenEntries == null) {
-            givenEntries = this.freeSegmentsByLength.descendingMap().entrySet();
+        if (givenSegments == null) {
+            givenSegments = this.freeSegmentsByLength.descendingMap().values();
         }
-        for (var entry : givenEntries) {
-            biggestFreeTotalSize += entry.getValue().getLength();
+        for (var segment : givenSegments) {
+            biggestFreeTotalSize += segment.getLength();
             count++;
-            if (count >= 3) {
+            if (count >= FRAGMENTATION_DEGREE_SAMPLES) {
                 break;
             }
         }
@@ -67,7 +67,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
             return;
         }
 
-        var descendingFreeSegments = this.freeSegmentsByLength.descendingMap().entrySet();
+        var descendingFreeSegments = this.freeSegmentsByLength.descendingMap().values();
         long requiredSeenFreeSize = (long) ((this.capacity - this.used) * DEFRAG_MIN_SEEN_FREE_FRACTION);
 
         // calculate number of defragmentation steps to perform based on fragmentation degree
@@ -86,56 +86,61 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         return Mth.lerpInt(fragmentationDegree, 1, MAX_DEFRAG_STEPS + 1);
     }
 
-    private void defragmentationStep(CommandList commands, Set<Map.Entry<Long, GlBufferSegment>> descendingFreeSegments, long requiredSeenFreeSize, ArenaAggregator.DefragBudget budget) {
+    private void defragmentationStep(CommandList commands, Collection<GlBufferSegment> descendingFreeSegments, long requiredSeenFreeSize, ArenaAggregator.DefragBudget budget) {
         // find the biggest free segment that can receive defragmentation
         long seenFreeSize = 0;
         var it = descendingFreeSegments.iterator();
-        Map.Entry<Long, GlBufferSegment> biggestEntry = null;
-        var secondBiggestEntry = it.next();
-        while (it.hasNext() || biggestEntry != null) {
-            biggestEntry = secondBiggestEntry;
-            secondBiggestEntry = it.hasNext() ? it.next() : null;
+        GlBufferSegment biggestFree;
+        var secondBiggestFree = it.next();
+        while (it.hasNext() || secondBiggestFree != null) {
+            biggestFree = secondBiggestFree;
+            secondBiggestFree = it.hasNext() ? it.next() : null;
 
-            var biggestFree = biggestEntry.getValue();
-            seenFreeSize += biggestFree.getLength();
+            seenFreeSize += biggestFree.getLength(); // biggestFree guaranteed non-null here
 
             // stop if we've already seen enough free and defragmentation must be low
             if (seenFreeSize >= requiredSeenFreeSize) {
                 break;
             }
 
-            // determine the direction we want to move it
-            var next = biggestFree.getNext();
-            var prev = biggestFree.getPrev();
-            if (next == null && prev == this.head) {
-                // violated invariant, only one free segment
-                throw new IllegalStateException("There cannot be multiple free segments if there's no next and the previous is the head");
-            }
-
-            // find as many segments as will fit into the free segment in the chosen direction to move in the opposite direction, which causes the free segment to move in the chosen direction
-            // TODO: this is causing likely the cause of a java.lang.IllegalStateException: segment.prev.end > segment.start: overlapping segments (corrupted) within the segment extraction code
-            // TODO: more smartly determine whether moving the free space in any particular direction would actually gain us anything, i.e. if there's no significant amount of free segments to be combined with in this direction, don't even try. maybe just get the top N biggest free segments and move them towards each other preferentially? -> use while loops and collect the biggest and second biggest and try to move the biggest towards the second biggest, and if that doesn't work, in the other direction, and if that doesn't work, try the second and third biggest, etc.
-            // TODO: byte and copy count budgeting, integrate with time estimation?
-            var secondBiggestFree = secondBiggestEntry != null ? secondBiggestEntry.getValue() : null;
-            var defragmentRightLocal = this.defragmentRight;
-            if (secondBiggestFree != null) {
-                defragmentRightLocal = biggestFree.getOffset() < secondBiggestFree.getOffset();
-            }
-            if (defragmentRightLocal) {
-                if (next != null && defragmentRightwards(commands, biggestFree, budget)) {
-                    this.checkAssertions();
-                    return;
-                }
-            } else {
-                if (prev != this.head && biggestFree != this.head && defragmentLeftwards(commands, biggestFree, budget)) {
-                    this.checkAssertions();
-                    return;
-                }
+            if (defragmentDirectional(commands, budget, biggestFree, secondBiggestFree)) {
+                return;
             }
         }
 
         // no success, go the other way next time
         this.defragmentRight = !this.defragmentRight;
+    }
+
+    private boolean defragmentDirectional(CommandList commands, ArenaAggregator.DefragBudget budget, GlBufferSegment biggestFree, GlBufferSegment secondBiggestFree) {
+        // determine the direction we want to move it
+        var next = biggestFree.getNext();
+        var prev = biggestFree.getPrev();
+        if (next == null && prev == this.head) {
+            // violated invariant, only one free segment
+            throw new IllegalStateException("There cannot be multiple free segments if there's no next and the previous is the head");
+        }
+
+        // find as many segments as will fit into the free segment in the chosen direction to move in the opposite direction, which causes the free segment to move in the chosen direction
+        // TODO: this is causing likely the cause of a java.lang.IllegalStateException: segment.prev.end > segment.start: overlapping segments (corrupted) within the segment extraction code
+        // TODO: more smartly determine whether moving the free space in any particular direction would actually gain us anything, i.e. if there's no significant amount of free segments to be combined with in this direction, don't even try. maybe just get the top N biggest free segments and move them towards each other preferentially? -> use while loops and collect the biggest and second biggest and try to move the biggest towards the second biggest, and if that doesn't work, in the other direction, and if that doesn't work, try the second and third biggest, etc.
+        // TODO: byte and copy count budgeting, integrate with time estimation?
+        var defragmentRightLocal = this.defragmentRight;
+        if (secondBiggestFree != null) {
+            defragmentRightLocal = biggestFree.getOffset() < secondBiggestFree.getOffset();
+        }
+        if (defragmentRightLocal) {
+            if (next != null && defragmentRightwards(commands, biggestFree, budget)) {
+                this.checkAssertions();
+                return true;
+            }
+        } else {
+            if (prev != this.head && biggestFree != this.head && defragmentLeftwards(commands, biggestFree, budget)) {
+                this.checkAssertions();
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean defragmentRightwards(CommandList commands, GlBufferSegment biggestFree, ArenaAggregator.DefragBudget budget) {

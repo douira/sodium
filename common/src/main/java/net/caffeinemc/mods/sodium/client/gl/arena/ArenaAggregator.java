@@ -184,6 +184,7 @@ public class ArenaAggregator {
     }
 
     GlBufferArena getArenaFittingFor(CommandList commands, long requiredCapacity, int stride) {
+        // TODO: create arena size based on top k region sizes, and scale up if all regions are big
         return getDataTypeForStride(stride).ensureSharedArena(commands, requiredCapacity);
     }
 
