@@ -176,7 +176,7 @@ public class SectionRenderDataStorage {
 
         // create and upload a new shared index buffer
         var buffer = SharedQuadIndexBuffer.createIndexBuffer(SharedQuadIndexBuffer.IndexType.INTEGER, this.sharedIndexCapacity);
-        var pendingUpload = new PendingUpload(buffer);
+        var pendingUpload = new PendingUpload(buffer, RenderRegion.SHARED_INDEX_DATA_INDEX);
         var bufferChanged = arena.upload(commandList, Stream.of(pendingUpload));
         this.sharedIndexAllocation = pendingUpload.getResult();
         buffer.free();
@@ -279,6 +279,46 @@ public class SectionRenderDataStorage {
                 }
             }
         }
+    }
+
+    public void onVertexSegmentChanged(int sectionIndex) {
+        // update the base vertex offset
+        var allocation = this.vertexAllocations[sectionIndex];
+
+        if (allocation == null) {
+            throw new IllegalStateException("Vertex allocation is null but it was modified");
+        }
+
+        long offset = allocation.getOffset();
+        SectionRenderDataUnsafe.setBaseVertex(this.getDataPointer(sectionIndex), offset);
+    }
+
+    public void onSharedIndexSegmentChanged() {
+        if (this.sharedIndexAllocation == null) {
+            throw new IllegalStateException("Shared index allocation is null but it was modified");
+        }
+
+        long sharedBaseElement = this.sharedIndexAllocation.getOffset();
+        for (int i = 0; i < RenderRegion.REGION_SIZE; i++) {
+            if (this.sharedIndexUsage[i] > 0) {
+                SectionRenderDataUnsafe.setSharedBaseElement(this.getDataPointer(i), sharedBaseElement);
+            }
+        }
+    }
+
+    public void onIndexSegmentChanged(int sectionIndex) {
+        if (this.elementAllocations == null) {
+            throw new IllegalStateException("Index allocation is null but it was modified");
+        }
+
+        var allocation = this.elementAllocations[sectionIndex];
+
+        if (allocation == null) {
+            throw new IllegalStateException("Index allocation is null but it was modified");
+        }
+
+        long offset = allocation.getOffset();
+        SectionRenderDataUnsafe.setLocalBaseElement(this.getDataPointer(sectionIndex), offset);
     }
 
     public long getDataPointer(int sectionIndex) {

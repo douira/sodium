@@ -4,23 +4,28 @@ import net.caffeinemc.mods.sodium.client.gl.buffer.GlBuffer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 
-import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 public class RegionAllocatorHandle implements AllocatorBase, SizedTreeMap.Sized {
     private final RenderRegion region;
-    private final Consumer<CommandList> onBufferChange;
+    private final AllocationChangeConsumer onChange;
     private GlBufferArena backingArena;
     long used;
     int usedSegments;
     int identifier;
     private static int nextIdentifier = 1;
 
-    public RegionAllocatorHandle(RenderRegion region, Consumer<CommandList> onBufferChange, GlBufferArena backingArena) {
+    public RegionAllocatorHandle(RenderRegion region, AllocationChangeConsumer onChange, GlBufferArena backingArena) {
         this.region = region;
-        this.onBufferChange = onBufferChange;
+        this.onChange = onChange;
         this.backingArena = backingArena;
         this.identifier = nextIdentifier++;
+    }
+
+    public interface AllocationChangeConsumer {
+        void onBufferChanged(CommandList commandList);
+
+        void onSegmentChanged(CommandList commandList, int ownerIndex);
     }
 
     float getFillFractionInv() {
@@ -77,7 +82,11 @@ public class RegionAllocatorHandle implements AllocatorBase, SizedTreeMap.Sized 
     }
 
     public void notifyBufferChanged(CommandList commandList) {
-        this.onBufferChange.accept(commandList);
+        this.onChange.onBufferChanged(commandList);
+    }
+
+    public void notifySegmentChanged(CommandList commandList, int ownerIndex) {
+        this.onChange.onSegmentChanged(commandList, ownerIndex);
     }
 
     @Override

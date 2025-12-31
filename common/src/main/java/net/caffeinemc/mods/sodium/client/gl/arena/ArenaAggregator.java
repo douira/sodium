@@ -13,7 +13,6 @@ import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 
 // TODO: if the required capacity is huge, maybe it shouldn't be shared, or we should overshoot it more?
 // TODO: when moving region to a new buffer, return the next shared arena, or decide that the request is too big and return a regular single-owner
@@ -160,17 +159,17 @@ public class ArenaAggregator {
         this.stagingBuffer = stagingBuffer;
     }
 
-    public RegionAllocatorHandle getGeometryBufferAllocator(CommandList commands, RenderRegion region, int stride, Consumer<CommandList> onBufferChange) {
-        return createAllocator(commands, region, stride, onBufferChange);
+    public RegionAllocatorHandle getGeometryBufferAllocator(CommandList commands, RenderRegion region, int stride, RegionAllocatorHandle.AllocationChangeConsumer onChange) {
+        return createAllocator(commands, region, stride, onChange);
     }
 
-    public RegionAllocatorHandle getIndexBufferAllocator(CommandList commands, RenderRegion region, int stride, Consumer<CommandList> onBufferChange) {
-        return createAllocator(commands, region, stride, onBufferChange);
+    public RegionAllocatorHandle getIndexBufferAllocator(CommandList commands, RenderRegion region, int stride, RegionAllocatorHandle.AllocationChangeConsumer onChange) {
+        return createAllocator(commands, region, stride, onChange);
     }
 
-    private RegionAllocatorHandle createAllocator(CommandList commands, RenderRegion region, int stride, Consumer<CommandList> onBufferChange) {
+    private RegionAllocatorHandle createAllocator(CommandList commands, RenderRegion region, int stride, RegionAllocatorHandle.AllocationChangeConsumer onChange) {
         GlBufferArena backingArena = getArenaFittingFor(commands, 0, stride);
-        return new RegionAllocatorHandle(region, onBufferChange, backingArena);
+        return new RegionAllocatorHandle(region, onChange, backingArena);
     }
 
     private DataType getDataTypeForStride(int stride) {

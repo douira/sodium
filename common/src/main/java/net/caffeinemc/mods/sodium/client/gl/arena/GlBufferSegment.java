@@ -1,11 +1,13 @@
 package net.caffeinemc.mods.sodium.client.gl.arena;
 
+import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.util.UInt32;
 
 // TODO: fine-grained segment update notification to avoid re-writing the entire render data on small changes
 public class GlBufferSegment implements SizedTreeMap.Sized {
     private AllocatorBase allocator;
     private RegionAllocatorHandle owner;
+    private int ownerIndex;
 
     private int offset; /* Uint32 */
     private int length; /* Uint32 */
@@ -13,15 +15,16 @@ public class GlBufferSegment implements SizedTreeMap.Sized {
     private GlBufferSegment next;
     private GlBufferSegment prev;
 
-    public GlBufferSegment(GlBufferArena allocator, RegionAllocatorHandle owner, long offset, long length) {
+    public GlBufferSegment(GlBufferArena allocator, RegionAllocatorHandle owner, int ownerIndex, long offset, long length) {
         this.allocator = allocator;
         this.owner = owner;
+        this.ownerIndex = ownerIndex;
         this.offset = UInt32.downcast(offset);
         this.length = UInt32.downcast(length);
     }
 
     public static GlBufferSegment createFreeSegment(GlBufferArena allocator, long offset, long length) {
-        return new GlBufferSegment(allocator, null, offset, length);
+        return new GlBufferSegment(allocator, null, 0, offset, length);
     }
 
     /* Uint32 */
@@ -47,8 +50,13 @@ public class GlBufferSegment implements SizedTreeMap.Sized {
         this.length = UInt32.downcast(length);
     }
 
-    protected void setOwner(RegionAllocatorHandle owner) {
+    protected void setOwner(RegionAllocatorHandle owner, int ownerIndex) {
         this.owner = owner;
+        this.ownerIndex = ownerIndex;
+    }
+
+    protected void notifyOwnerSegmentChanged(CommandList commands) {
+        this.owner.notifySegmentChanged(commands, this.ownerIndex);
     }
 
     protected void setFree() {

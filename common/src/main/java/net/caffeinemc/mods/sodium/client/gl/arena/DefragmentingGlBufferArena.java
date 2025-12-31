@@ -177,7 +177,6 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         long totalMoveLength = 0;
         var toMove = biggestFree.getNext();
         var destinationPrev = biggestFree.getPrev();
-        var ownersToNotify = new ReferenceOpenHashSet<RegionAllocatorHandle>();
         while (toMove != null && !toMove.isFree()) {
             var newTotalMoveLength = totalMoveLength + toMove.getLength();
             if (newTotalMoveLength > freeLength || totalMoveLength != 0 && budget.elementCopyExceedsBudget(newTotalMoveLength)) {
@@ -187,7 +186,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
             // this segment does still fit, add it
             toMove.setOffset(freeOffset + totalMoveLength);
             totalMoveLength = newTotalMoveLength;
-            ownersToNotify.add(toMove.getOwner());
+            toMove.notifyOwnerSegmentChanged(commands);
 
             // perform linkages with prev
             if (destinationPrev == null) {
@@ -240,10 +239,6 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
 
             this.addFreeSegment(biggestFree);
 
-            for (var owner : ownersToNotify) {
-                owner.notifyBufferChanged(commands);
-            }
-
             return true;
         }
 
@@ -259,7 +254,6 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         long totalMoveLength = 0;
         var toMove = biggestFree.getPrev();
         var destinationNext = biggestFree.getNext();
-        var ownersToNotify = new ReferenceOpenHashSet<RegionAllocatorHandle>();
         while (toMove != this.head && !toMove.isFree()) {
             var newTotalMoveLength = totalMoveLength + toMove.getLength();
             if (newTotalMoveLength > freeLength || totalMoveLength != 0 && budget.elementCopyExceedsBudget(newTotalMoveLength)) {
@@ -269,7 +263,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
             // this segment does still fit, add it
             totalMoveLength = newTotalMoveLength;
             toMove.setOffset(freeEnd - totalMoveLength);
-            ownersToNotify.add(toMove.getOwner());
+            toMove.notifyOwnerSegmentChanged(commands);
 
             // perform linkages with next
             if (destinationNext != null) {
@@ -330,10 +324,6 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
 
             this.addFreeSegment(biggestFree);
 
-            for (var owner : ownersToNotify) {
-                owner.notifyBufferChanged(commands);
-            }
-
             return true;
         }
 
@@ -345,7 +335,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         return this.freeSegmentsByLength.removeFirstFitting(size);
     }
 
-    GlBufferSegment alloc(long size, RegionAllocatorHandle owner) {
+    GlBufferSegment alloc(long size, RegionAllocatorHandle owner, int ownerIndex) {
         this.checkAssertions();
 
         GlBufferSegment free = this.takeFree(size);
@@ -358,13 +348,13 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
 
         // exact fit
         if (free.getLength() == size) {
-            free.setOwner(owner);
+            free.setOwner(owner, ownerIndex);
 
             result = free;
         }
         // free space is larger than requested, return new segment at end of free space
         else {
-            result = new GlBufferSegment(this, owner, free.getEnd() - size, size);
+            result = new GlBufferSegment(this, owner, ownerIndex, free.getEnd() - size, size);
             result.setNext(free.getNext());
             result.setPrev(free);
 

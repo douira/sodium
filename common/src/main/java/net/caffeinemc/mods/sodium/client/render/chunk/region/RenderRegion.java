@@ -41,6 +41,8 @@ public class RenderRegion {
 
     public static final int REGION_SIZE = REGION_WIDTH * REGION_HEIGHT * REGION_LENGTH;
 
+    public static final int SHARED_INDEX_DATA_INDEX = -1;
+
     static {
         Validate.isTrue(MathUtil.isPowerOfTwo(REGION_WIDTH));
         Validate.isTrue(MathUtil.isPowerOfTwo(REGION_HEIGHT));
@@ -205,6 +207,41 @@ public class RenderRegion {
         this.clearCachedBatchFor(DefaultTerrainRenderPasses.TRANSLUCENT);
     }
 
+    public static int packOwnerIndex(int sectionIndex, int passIndex) {
+        return (passIndex << 16) | (sectionIndex & 0xFFFF);
+    }
+
+    public static int unpackSectionIndex(int ownerIndex) {
+        return ownerIndex & 0xFFFF;
+    }
+
+    public static int unpackPassIndex(int ownerIndex) {
+        return (ownerIndex >> 16) & 0xFF;
+    }
+
+    private void onGeometrySegmentChange(CommandList commandList, int ownerIndex) {
+        var sectionIndex = RenderRegion.unpackSectionIndex(ownerIndex);
+        var passIndex = RenderRegion.unpackPassIndex(ownerIndex);
+        var storage = this.sectionRenderData.get(DefaultTerrainRenderPasses.ALL[passIndex]);
+
+        storage.onVertexSegmentChanged(sectionIndex);
+
+        this.clearAllCachedBatches();
+    }
+
+    private void onIndexSegmentChange(CommandList commandList, int ownerIndex) {
+        var storage = this.sectionRenderData.get(DefaultTerrainRenderPasses.TRANSLUCENT);
+
+        if (ownerIndex == SHARED_INDEX_DATA_INDEX) {
+            storage.onSharedIndexSegmentChanged();
+        } else {
+            var sectionIndex = RenderRegion.unpackSectionIndex(ownerIndex);
+            storage.onIndexSegmentChanged(sectionIndex);
+        }
+
+        this.clearCachedBatchFor(DefaultTerrainRenderPasses.TRANSLUCENT);
+    }
+
     public void addSection(RenderSection section) {
         var sectionIndex = section.getSectionIndex();
         var prev = this.sections[sectionIndex];
@@ -266,6 +303,30 @@ public class RenderRegion {
         return this.renderList;
     }
 
+    private final RegionAllocatorHandle.AllocationChangeConsumer geometryChangeConsumer = new RegionAllocatorHandle.AllocationChangeConsumer() {
+        @Override
+        public void onBufferChanged(CommandList commandList) {
+            RenderRegion.this.onGeometryBufferChange(commandList);
+        }
+
+        @Override
+        public void onSegmentChanged(CommandList commandList, int ownerIndex) {
+            RenderRegion.this.onGeometrySegmentChange(commandList, ownerIndex);
+        }
+    };
+
+    private final RegionAllocatorHandle.AllocationChangeConsumer indexChangeConsumer = new RegionAllocatorHandle.AllocationChangeConsumer() {
+        @Override
+        public void onBufferChanged(CommandList commandList) {
+            RenderRegion.this.onIndexBufferChange(commandList);
+        }
+
+        @Override
+        public void onSegmentChanged(CommandList commandList, int ownerIndex) {
+            RenderRegion.this.onIndexSegmentChange(commandList, ownerIndex);
+        }
+    };
+
     public static class DeviceResources {
         private final RegionAllocatorHandle geometryArena;
         private final RegionAllocatorHandle indexArena;
@@ -284,9 +345,10 @@ public class RenderRegion {
         public DeviceResources(CommandList commandList, RenderRegion region) {
             int stride = ChunkMeshFormats.COMPACT.getVertexFormat().getStride();
 
-            this.geometryArena = region.arenaAggregator.getGeometryBufferAllocator(commandList, region, stride, region::onGeometryBufferChange);
+            this.geometryArena = region.arenaAggregator.getGeometryBufferAllocator(commandList, region, stride,
+                    region.geometryChangeConsumer);
             this.chunkFades = new GlBufferStreamer(commandList, REGION_SIZE, Integer.BYTES);
-            this.indexArena = region.arenaAggregator.getIndexBufferAllocator(commandList, region, Integer.BYTES, region::onIndexBufferChange);
+            this.indexArena = region.arenaAggregator.getIndexBufferAllocator(commandList, region, Integer.BYTES, region.indexChangeConsumer);
         }
 
         public void writeMeshTimes(int sectionIndex, int millisecondToCompare) {

@@ -203,7 +203,7 @@ public class GlBufferArena implements AllocatorBase {
         this.usedSegments += Long.signum(deltaUsed);
     }
 
-    GlBufferSegment alloc(long size, RegionAllocatorHandle owner) {
+    GlBufferSegment alloc(long size, RegionAllocatorHandle owner, int ownerIndex) {
         this.checkAssertions();
 
         GlBufferSegment free = this.takeFree(size);
@@ -216,13 +216,13 @@ public class GlBufferArena implements AllocatorBase {
 
         // exact fit
         if (free.getLength() == size) {
-            free.setOwner(owner);
+            free.setOwner(owner, ownerIndex);
 
             result = free;
         }
         // free space is larger than requested, return new segment at end of free space
         else {
-            result = new GlBufferSegment(this, owner, free.getEnd() - size, size);
+            result = new GlBufferSegment(this, owner, ownerIndex, free.getEnd() - size, size);
             result.setNext(free.getNext());
             result.setPrev(free);
 
@@ -408,7 +408,7 @@ public class GlBufferArena implements AllocatorBase {
 
         int elementCount = data.remaining() / this.stride;
 
-        GlBufferSegment dst = this.alloc(elementCount, owner);
+        GlBufferSegment dst = this.alloc(elementCount, owner, upload.getSegmentOwnerIndex());
 
         if (dst == null) {
             return false;

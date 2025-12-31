@@ -71,6 +71,7 @@ public class RenderRegionManager {
     private void uploadResults(CommandList commandList, RenderRegion region, Collection<BuilderTaskOutput> results) {
         var uploads = new ArrayList<PendingSectionMeshUpload>();
         var indexUploads = new ArrayList<PendingSectionIndexBufferUpload>();
+        var translucentPassIndex = DefaultTerrainRenderPasses.getPassIndex(DefaultTerrainRenderPasses.TRANSLUCENT);
 
         for (BuilderTaskOutput result : results) {
             int renderSectionIndex = result.render.getSectionIndex();
@@ -80,7 +81,8 @@ public class RenderRegionManager {
             }
 
             if (result instanceof ChunkBuildOutput chunkBuildOutput) {
-                for (TerrainRenderPass pass : DefaultTerrainRenderPasses.ALL) {
+                for (int passIndex = 0; passIndex < DefaultTerrainRenderPasses.ALL.length; passIndex++) {
+                    TerrainRenderPass pass = DefaultTerrainRenderPasses.ALL[passIndex];
                     var storage = region.getStorage(pass);
 
                     if (storage != null) {
@@ -100,7 +102,7 @@ public class RenderRegionManager {
 
                     if (mesh != null) {
                         uploads.add(new PendingSectionMeshUpload(result.render, meshTime, mesh, pass,
-                                new PendingUpload(mesh.getVertexData())));
+                                new PendingUpload(mesh.getVertexData(), RenderRegion.packOwnerIndex(renderSectionIndex, passIndex))));
                     }
                 }
             }
@@ -135,7 +137,7 @@ public class RenderRegionManager {
                         continue;
                     }
 
-                    indexUploads.add(new PendingSectionIndexBufferUpload(result.render, new PendingUpload(buffer)));
+                    indexUploads.add(new PendingSectionIndexBufferUpload(result.render, new PendingUpload(buffer, RenderRegion.packOwnerIndex(renderSectionIndex, translucentPassIndex))));
                 }
             }
         }
