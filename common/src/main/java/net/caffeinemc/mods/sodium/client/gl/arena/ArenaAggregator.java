@@ -26,8 +26,8 @@ public class ArenaAggregator {
     private static final long SHARED_INDEX_SIZE = MathUtil.fromMib(32);
     private static final int DEFRAG_COPIES_PER_FRAME_BUDGET = 32;
     private static final long DEFRAG_BYTES_PER_FRAME_BUDGET = MathUtil.fromMib(32);
-    private static final float MIN_FREE_FRACTION_AFTER_DEALLOC = 0.2f;
-    private static final float FREE_FRACTION_AFTER_DEALLOC_ABORT_LIMIT = 0.1f;
+    private static final float MIN_FREE_FRACTION_AFTER_DEALLOC = 0.1f;
+    private static final float FREE_FRACTION_AFTER_DEALLOC_ABORT_LIMIT = 0.07f;
 
     private static final GlBufferUsage BUFFER_USAGE = GlBufferUsage.STATIC_DRAW;
 
@@ -156,11 +156,12 @@ public class ArenaAggregator {
             long totalCapacity = 0;
             long totalUnfragmentedFree = 0;
             SharedGlBufferArena emptyingArena = null;
+            var canDeleteArena = this.arenas.size() > 1;
             var it = this.arenas.iterator();
             while (it.hasNext()) {
                 var arena = it.next();
 
-                if (arena.isEmpty()) {
+                if (arena.isEmpty() && canDeleteArena) {
                     arena.deleteShared(commands);
                     it.remove();
                     continue;
@@ -175,8 +176,8 @@ public class ArenaAggregator {
 
             // perform emptying on the currently emptying arena
             if (emptyingArena != null) {
-                // make sure the arena that's emptying wouldn't cause there to be too little free space
-                if (emptyingArena.getGlobalFreeFractionAfterEmptying(totalCapacity, totalUnfragmentedFree) < FREE_FRACTION_AFTER_DEALLOC_ABORT_LIMIT) {
+                // make sure the arena that's emptying wouldn't cause there to be too little free space or too few arenas
+                if (emptyingArena.getGlobalFreeFractionAfterEmptying(totalCapacity, totalUnfragmentedFree) < FREE_FRACTION_AFTER_DEALLOC_ABORT_LIMIT || !canDeleteArena) {
                     emptyingArena.setEmptying(false);
                     emptyingArena = null;
                 }
@@ -211,7 +212,7 @@ public class ArenaAggregator {
             }
 
             // check if we can deallocate the least used arena by relocating its data into the others
-            if (emptyingArena == null && leastUsedArena != null && this.arenas.size() > 1 &&
+            if (emptyingArena == null && leastUsedArena != null && canDeleteArena &&
                     leastUsedArena.getGlobalFreeFractionAfterEmptying(totalCapacity, totalUnfragmentedFree) >= MIN_FREE_FRACTION_AFTER_DEALLOC) {
                 leastUsedArena.setEmptying(true);
             }

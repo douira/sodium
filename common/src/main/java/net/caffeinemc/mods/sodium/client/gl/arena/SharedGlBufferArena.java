@@ -46,7 +46,8 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
     }
 
     public boolean isEmpty() {
-        return this.used == 0;
+        // NOTE: the arena is only empty when there are no owners, they may currently have no data allocated
+        return this.ownersByUsed.isEmpty();
     }
 
     public boolean isEmptying() {
@@ -83,22 +84,23 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         if (!this.isEmptying) {
             throw new IllegalStateException("Arena is not emptying");
         }
-        if (this.isEmpty()) {
-            return true;
+
+        int copyCount = 0;
+        while (copyCount == 0 && !this.isEmpty()) {
+            // get the biggest owner that fits into the budget
+            // TODO: what happens when it doesn't fit into the budget? we just take one anyway?
+            var ownerToEvict = this.ownersByUsed.removeLargestOfSizeAtMost(budget.getRemainingCopyBytes());
+            if (ownerToEvict == null) {
+                break;
+            }
+
+            copyCount = estimateAndTransferOwner(commands, ownerToEvict);
+
+            // notify the owner that has been moved of the buffer change
+            ownerToEvict.notifyBufferChanged(commands);
+
+            budget.consumeElementCopy(ownerToEvict.used, copyCount);
         }
-
-        // get the biggest owner that fits into the budget
-        var ownerToEvict = this.ownersByUsed.removeLargestOfSizeAtMost(budget.getRemainingCopyBytes());
-        if (ownerToEvict == null) {
-            return false;
-        }
-
-        var copyCount = estimateAndTransferOwner(commands, ownerToEvict);
-
-        // notify the owner that has been moved of the buffer change
-        ownerToEvict.notifyBufferChanged(commands);
-
-        budget.consumeElementCopy(ownerToEvict.used, copyCount);
 
         return this.isEmpty();
     }
@@ -184,6 +186,10 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
 
         this.ownersByUsed.addSized(owner);
 
+        if (segments.isEmpty()) {
+            return 0;
+        }
+
         // find the target segment that's big enough to contain all segments
         var targetSegment = this.takeFree(owner.used);
         if (targetSegment == null) {
@@ -201,7 +207,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
 
     private void finalizeInsertedSegments(GlBufferSegment targetSegment, long endOfFreePrefix, List<GlBufferSegment> segments) {
         if (segments.isEmpty()) {
-            throw new IllegalArgumentException("No segments to insert");
+            return;
         }
 
         // new order: targetSegment.prev -> targetSegment (if any space left) -> segments... -> targetSegment.next
@@ -260,6 +266,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
                 extractedSegments.add(current);
                 current.setAllocator(newAllocator);
                 this.used -= current.getLength();
+                this.usedSegments--;
 
                 this.checkAssertions();
 
