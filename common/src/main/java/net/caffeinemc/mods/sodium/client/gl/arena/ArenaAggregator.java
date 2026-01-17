@@ -113,7 +113,7 @@ public class ArenaAggregator {
             return new SharedGlBufferArena(ArenaAggregator.this, buffer, actualCapacity, this.stride);
         }
 
-        SharedGlBufferArena ensureSharedArena(CommandList commands, long requiredCapacity) {
+        SharedGlBufferArena ensureSharedArena(CommandList commands, long requiredCapacity, boolean allowNewAllocation) {
             SharedGlBufferArena bestArena = null;
             long biggestFreeSegmentSize = requiredCapacity;
             for (var arena : this.arenas) {
@@ -124,7 +124,7 @@ public class ArenaAggregator {
                 }
             }
 
-            if (bestArena == null) {
+            if (bestArena == null && allowNewAllocation) {
                 bestArena = createSharedArena(commands, Math.max(requiredCapacity, this.sharedSize));
                 this.arenas.add(bestArena);
             }
@@ -232,7 +232,7 @@ public class ArenaAggregator {
     }
 
     private RegionAllocatorHandle createAllocator(CommandList commands, RenderRegion region, int stride, RegionAllocatorHandle.AllocationChangeConsumer onChange) {
-        GlBufferArena backingArena = getArenaFittingFor(commands, 0, stride);
+        GlBufferArena backingArena = getArenaFittingFor(commands, 0, stride, true);
         return new RegionAllocatorHandle(region, onChange, backingArena);
     }
 
@@ -246,9 +246,9 @@ public class ArenaAggregator {
         }
     }
 
-    GlBufferArena getArenaFittingFor(CommandList commands, long requiredCapacity, int stride) {
+    GlBufferArena getArenaFittingFor(CommandList commands, long requiredCapacity, int stride, boolean allowNewAllocation) {
         // TODO: create arena size based on top k region sizes, and scale up if all regions are big
-        return getDataTypeForStride(stride).ensureSharedArena(commands, requiredCapacity);
+        return getDataTypeForStride(stride).ensureSharedArena(commands, requiredCapacity, allowNewAllocation);
     }
 
     GlBufferArena createDedicatedArena(CommandList commands, long requiredCapacity, int stride) {
@@ -410,7 +410,7 @@ public class ArenaAggregator {
             }
 
             int mapWidth = (targetWidth - leftPadding * 2 - arenaPadding * (arenaCount - 1)) / arenaCount;
-            int mapHeight = totalMapHeight * (dataType.arenas.size() + countOffset) / mapCount;
+            int mapHeight = (totalMapHeight * (arenaCount + countOffset)) / mapCount;
             for (var arenaEntry : dataType.arenas) {
                 arenaEntry.renderDebugMap(graphics, x, y, mapWidth, mapHeight);
                 x += mapWidth + arenaPadding;

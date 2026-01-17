@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SharedGlBufferArena extends DefragmentingGlBufferArena implements SizedTreeMap.Sized {
+    private static final int TRANSFER_ABORTED = -1;
     final SizedTreeMap<RegionAllocatorHandle> ownersByUsed = new SizedTreeMap<>();
     private boolean isEmptying = false;
 
@@ -94,7 +95,14 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
                 break;
             }
 
-            copyCount = estimateAndTransferOwner(commands, ownerToEvict);
+            copyCount = estimateAndTransferOwner(commands, ownerToEvict, false);
+
+            // stop emptying if there's no arena that can accommodate the eviction
+            if (copyCount == TRANSFER_ABORTED) {
+                this.ownersByUsed.addSized(ownerToEvict);
+                this.isEmptying = false;
+                break;
+            }
 
             // notify the owner that has been moved of the buffer change
             ownerToEvict.notifyBufferChanged(commands);
@@ -105,14 +113,14 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         return this.isEmpty();
     }
 
-    private int estimateAndTransferOwner(CommandList commands, RegionAllocatorHandle ownerToEvict) {
-        return this.estimateAndTransferUploadingOwner(commands, ownerToEvict.usedSegments, ownerToEvict, ownerToEvict.used);
+    private int estimateAndTransferOwner(CommandList commands, RegionAllocatorHandle ownerToEvict, boolean allowNewAllocation) {
+        return this.estimateAndTransferUploadingOwner(commands, ownerToEvict.usedSegments, ownerToEvict, ownerToEvict.used, allowNewAllocation);
     }
 
-    private int estimateAndTransferUploadingOwner(CommandList commands, int finalSegmentCount, RegionAllocatorHandle biggestUsageOwner, long finalUsage) {
+    private int estimateAndTransferUploadingOwner(CommandList commands, int finalSegmentCount, RegionAllocatorHandle biggestUsageOwner, long finalUsage, boolean allowNewAllocation) {
         // TODO: when estimating new capacity, take into account how full the section already is since a full section will not grow much anymore
         var newCapacity = GlBufferArena.estimateNewCapacity(finalSegmentCount, biggestUsageOwner.getFillFractionInv(), finalUsage);
-        return this.transferOwnerToNewArena(commands, biggestUsageOwner, newCapacity);
+        return this.transferOwnerToNewArena(commands, biggestUsageOwner, newCapacity, allowNewAllocation);
     }
 
     @Override
@@ -146,15 +154,18 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
             }
 
             // by construction, either the owner is the biggest one and is getting moved to its own arena, or another owner is bigger and this one will fit into this young gen arena
-            estimateAndTransferUploadingOwner(commands, biggestUsageSegmentCount, biggestUsageOwner, biggestUsage);
+            estimateAndTransferUploadingOwner(commands, biggestUsageSegmentCount, biggestUsageOwner, biggestUsage, true);
 
             // try uploading again
             uploadingOwner.getBackingArena().tryUploads(commands, uploadingOwner, queue);
         } while (!queue.isEmpty());
     }
 
-    private int transferOwnerToNewArena(CommandList commands, RegionAllocatorHandle owner, long newCapacity) {
-        var targetArena = this.parent.getArenaFittingFor(commands, newCapacity, this.stride);
+    private int transferOwnerToNewArena(CommandList commands, RegionAllocatorHandle owner, long newCapacity, boolean allowNewAllocation) {
+        var targetArena = this.parent.getArenaFittingFor(commands, newCapacity, this.stride, allowNewAllocation);
+        if (targetArena == null && !allowNewAllocation) {
+            return TRANSFER_ABORTED;
+        }
         if (targetArena == this) {
             throw new IllegalStateException("Target arena is the same as the source arena");
         }
