@@ -5,6 +5,7 @@ import net.caffeinemc.mods.sodium.client.gl.arena.staging.StagingBuffer;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlBuffer;
 import net.caffeinemc.mods.sodium.client.gl.buffer.GlMutableBuffer;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
+import net.caffeinemc.mods.sodium.client.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -575,5 +576,10 @@ public class GlBufferArena implements AllocatorBase {
         this.texture.upload();
 
         graphics.blit(RenderPipelines.GUI_TEXTURED, this.textureId, x, y, 0, 0, drawWidth, drawHeight, 1, 1, 1, 1);
+
+        int usageOffset = 3;
+        graphics.drawString(Minecraft.getInstance().font, String.format("%d MiB", MathUtil.toMib(this.getDeviceUsedMemory())), x + usageOffset, y + drawHeight - 30, 0xFFFFFFFF);
+        graphics.drawString(Minecraft.getInstance().font, "of", x + usageOffset, y + drawHeight - 20, 0xFFFFFFFF);
+        graphics.drawString(Minecraft.getInstance().font, String.format("%d MiB", MathUtil.toMib(this.getDeviceAllocatedMemory())), x + usageOffset, y + drawHeight - 10, 0xFFFFFFFF);
     }
 }
