@@ -8,7 +8,7 @@ import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.Level;
 
-public class SectionTree extends PendingTaskCollector implements OcclusionCuller.GraphOcclusionVisitor {
+public class SectionTree extends PendingTaskCollector {
     private final TraversableForest tree;
 
     private final int bfsWidth;
@@ -58,6 +58,16 @@ public class SectionTree extends PendingTaskCollector implements OcclusionCuller
         planes |= section.getChunkZ() >= origin.getZ() - this.bfsWidth ? 1 << GraphDirection.SOUTH : 0;
 
         return planes;
+    }
+
+    @Override
+    public long getAngleVisibilityMask(Viewport viewport, RenderSection section) {
+        if (this.bfsWidth <= 1) { // bfsWidth > 1 implies !isFrustumTested
+            return super.getAngleVisibilityMask(viewport, section);
+        }
+
+        // +1 since at width 0 the margin is 16, and at width 1 the margin is 48
+        return calculateSectionAngleVisibilityMask(viewport, section, this.bfsWidth + 1);
     }
 
     @Override

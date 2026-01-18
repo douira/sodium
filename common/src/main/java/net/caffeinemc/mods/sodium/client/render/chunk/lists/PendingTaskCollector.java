@@ -62,6 +62,40 @@ public class PendingTaskCollector implements OcclusionCuller.GraphOcclusionVisit
         this.checkForTask(section);
     }
 
+    @Override
+    public long getAngleVisibilityMask(Viewport viewport, RenderSection section) {
+        if (this.isFrustumTested) {
+            return OcclusionCuller.GraphOcclusionVisitor.super.getAngleVisibilityMask(viewport, section);
+        }
+
+        return calculateSectionAngleVisibilityMask(viewport, section, 1);
+    }
+
+    protected static long calculateSectionAngleVisibilityMask(Viewport viewport, RenderSection section, int width) {
+        // compare the origin and the section centers
+        var origin = viewport.getChunkCoord();
+        var dx = Math.abs(origin.minBlockX() + 8 - section.getCenterX());
+        var dy = Math.abs(origin.minBlockY() + 8 - section.getCenterY());
+        var dz = Math.abs(origin.minBlockZ() + 8 - section.getCenterZ());
+
+        // in a pair da > db both distances can be up to 8 greater or 8 smaller.
+        // since we only want to apply occlusion if every combination satisfies the occlusion condition,
+        // we would need to do da - 8 > db + 8 and da + 8 > db - 8, which is equivalent to da > db + 16
+        var margin = 32 * width - 16;
+        var angleOcclusionMask = 0L;
+        if (dx > dy + margin || dz > dy + margin) {
+            angleOcclusionMask |= UP_DOWN_OCCLUDED;
+        }
+        if (dx > dz + margin || dy > dz + margin) {
+            angleOcclusionMask |= NORTH_SOUTH_OCCLUDED;
+        }
+        if (dy > dx + margin || dz > dx + margin) {
+            angleOcclusionMask |= WEST_EAST_OCCLUDED;
+        }
+
+        return ~angleOcclusionMask;
+    }
+
     protected void checkForTask(RenderSection section) {
         int type = section.getPendingUpdate();
 
