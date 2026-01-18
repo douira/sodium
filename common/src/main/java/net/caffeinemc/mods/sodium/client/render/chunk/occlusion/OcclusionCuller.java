@@ -89,6 +89,38 @@ public class OcclusionCuller {
 
             return ~angleOcclusionMask;
         }
+
+        default int getDirectionSets(Viewport viewport, RenderSection section) {
+            var transform = viewport.getTransform();
+
+            // determine which base perspectives need to be combined based on the camera position relative to the section.
+            // these bitmasks correspond to the base directions in DirectionalVisGraph.DIRECTION_SETS
+            int directionSetsX = 0;
+            if (transform.x >= section.getOriginX()) {
+                directionSetsX = 0b00001111;
+            }
+            if (transform.x <= section.getOriginX() + 16) {
+                directionSetsX |= 0b11110000;
+            }
+
+            int directionSetsZ = 0;
+            if (transform.z >= section.getOriginZ()) {
+                directionSetsZ = 0b00110011;
+            }
+            if (transform.z <= section.getOriginZ() + 16) {
+                directionSetsZ |= 0b11001100;
+            }
+
+            int directionSetsY = 0;
+            if (transform.y >= section.getOriginY()) {
+                directionSetsY = 0b01010101;
+            }
+            if (transform.y <= section.getOriginY() + 16) {
+                directionSetsY |= 0b10101010;
+            }
+
+            return directionSetsX & directionSetsY & directionSetsZ;
+        }
     }
 
     public OcclusionCuller(Long2ReferenceMap<RenderSection> sections, Level level) {
@@ -160,7 +192,7 @@ public class OcclusionCuller {
                     }
 
                     // get the visibility data for the camera perspective relative to this section
-                    var visibilityData = joinVisibilityData(visibilityDataSet, section, this.viewport);
+                    var visibilityData = this.joinVisibilityData(visibilityDataSet, section, this.viewport);
 
                     // occlude paths through the section if it's being viewed at an angle where
                     // the other side can't possibly be seen
@@ -184,40 +216,12 @@ public class OcclusionCuller {
         }
     }
 
-    private static long joinVisibilityData(long[] visibilityDataSet, RenderSection section, Viewport viewport) {
+    private long joinVisibilityData(long[] visibilityDataSet, RenderSection section, Viewport viewport) {
         if (visibilityDataSet.length == 1) {
             return visibilityDataSet[0];
         }
 
-        var transform = viewport.getTransform();
-
-        // determine which base perspectives need to be combined based on the camera position relative to the section.
-        // these bitmasks correspond to the base directions in DirectionalVisGraph.DIRECTION_SETS
-        int directionSetsX = 0;
-        if (transform.x >= section.getOriginX()) {
-            directionSetsX = 0b00001111;
-        }
-        if (transform.x <= section.getOriginX() + 16) {
-            directionSetsX |= 0b11110000;
-        }
-
-        int directionSetsZ = 0;
-        if (transform.z >= section.getOriginZ()) {
-            directionSetsZ = 0b00110011;
-        }
-        if (transform.z <= section.getOriginZ() + 16) {
-            directionSetsZ |= 0b11001100;
-        }
-
-        int directionSetsY = 0;
-        if (transform.y >= section.getOriginY()) {
-            directionSetsY = 0b01010101;
-        }
-        if (transform.y <= section.getOriginY() + 16) {
-            directionSetsY |= 0b10101010;
-        }
-
-        int directionSets = directionSetsX & directionSetsY & directionSetsZ;
+        int directionSets = this.visitor.getDirectionSets(viewport, section);
 
         // Combine the relevant visibility data sets.
         // Since each perspective can be seen from two opposite sides, two bits in each mask are set.
@@ -415,7 +419,7 @@ public class OcclusionCuller {
             }
 
             outgoing = VisibilityEncoding.getConnections(
-                    joinVisibilityData(visibilityDataSet, section, viewport));
+                    this.joinVisibilityData(visibilityDataSet, section, this.viewport));
         } else {
             // Occlusion culling is disabled, so we can traverse into any neighbor.
             outgoing = GraphDirectionSet.ALL;

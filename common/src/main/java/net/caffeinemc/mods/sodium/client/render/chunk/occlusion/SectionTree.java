@@ -71,6 +71,15 @@ public class SectionTree extends PendingTaskCollector {
     }
 
     @Override
+    public int getDirectionSets(Viewport viewport, RenderSection section) {
+        if (this.bfsWidth <= 1) {
+            return super.getDirectionSets(viewport, section);
+        }
+
+        return calculateDirectionSets(viewport, section, this.bfsWidth + 1);
+    }
+
+    @Override
     public void visit(RenderSection section) {
         super.visit(section);
 

@@ -96,6 +96,53 @@ public class PendingTaskCollector implements OcclusionCuller.GraphOcclusionVisit
         return ~angleOcclusionMask;
     }
 
+    @Override
+    public int getDirectionSets(Viewport viewport, RenderSection section) {
+        if (this.isFrustumTested) {
+            return OcclusionCuller.GraphOcclusionVisitor.super.getDirectionSets(viewport, section);
+        }
+
+        return calculateDirectionSets(viewport, section, 1);
+    }
+
+    protected static int calculateDirectionSets(Viewport viewport, RenderSection section, int width) {
+        var origin = viewport.getChunkCoord();
+        var minX = origin.minBlockX();
+        var minY = origin.minBlockY();
+        var minZ = origin.minBlockZ();
+
+        var posMargin = 16 * width;
+        var negMargin = 16 * (width - 1);
+
+        // determine which base perspectives need to be combined based on the camera position relative to the section.
+        // these bitmasks correspond to the base directions in DirectionalVisGraph.DIRECTION_SETS
+        int directionSetsX = 0;
+        if (minX + posMargin >= section.getOriginX()) {
+            directionSetsX = 0b00001111;
+        }
+        if (minX - negMargin <= section.getOriginX() + 16) {
+            directionSetsX |= 0b11110000;
+        }
+
+        int directionSetsZ = 0;
+        if (minZ + posMargin >= section.getOriginZ()) {
+            directionSetsZ = 0b00110011;
+        }
+        if (minZ - negMargin <= section.getOriginZ() + 16) {
+            directionSetsZ |= 0b11001100;
+        }
+
+        int directionSetsY = 0;
+        if (minY + posMargin >= section.getOriginY()) {
+            directionSetsY = 0b01010101;
+        }
+        if (minY - negMargin <= section.getOriginY() + 16) {
+            directionSetsY |= 0b10101010;
+        }
+
+        return directionSetsX & directionSetsY & directionSetsZ;
+    }
+
     protected void checkForTask(RenderSection section) {
         int type = section.getPendingUpdate();
 
