@@ -201,7 +201,10 @@ public class RenderRegion {
             this.resources.deleteIndexedTessellation(commandList);
         }
 
-        this.sectionRenderData.get(DefaultTerrainRenderPasses.TRANSLUCENT).onIndexBufferResized();
+        var indexStorage = this.sectionRenderData.get(DefaultTerrainRenderPasses.TRANSLUCENT);
+        if (indexStorage != null) {
+            indexStorage.onIndexBufferResized();
+        }
 
         // invalidate the cached batches
         this.clearCachedBatchFor(DefaultTerrainRenderPasses.TRANSLUCENT);

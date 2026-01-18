@@ -27,12 +27,20 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
     }
 
     protected void addFreeSegment(GlBufferSegment segment) {
-        this.freeSegmentsByLength.addSized(segment);
+        if (this.freeSegmentsByLength.addSized(segment) != null) {
+            CHECK_ASSERTIONS = true;
+            this.checkAssertions();
+            throw new IllegalStateException("Tried to add a free segment that was already registered as free");
+        }
         this.checkSegmentAssertions(segment);
     }
 
     protected void removeFreeSegment(GlBufferSegment segment) {
-        this.freeSegmentsByLength.removeSized(segment);
+        if (this.freeSegmentsByLength.removeSized(segment) == null) {
+            CHECK_ASSERTIONS = true;
+            this.checkAssertions();
+            throw new IllegalStateException("Tried to remove a free segment that wasn't registered as free");
+        }
 
         // don't check segment assertions on remove because what we're removing is invalid
     }
@@ -355,7 +363,7 @@ public class DefragmentingGlBufferArena extends GlBufferArena {
         }
         // free space is larger than requested, return new segment at end of free space
         else {
-            if (free.getEnd() < size) {
+            if (free.getLength() < size) {
                 CHECK_ASSERTIONS = true;
                 this.checkAssertions();
                 throw new IllegalStateException("Free segment is smaller than requested size");

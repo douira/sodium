@@ -20,6 +20,8 @@ public class RegionAllocatorHandle implements AllocatorBase, SizedTreeMap.Sized 
         this.onChange = onChange;
         this.backingArena = backingArena;
         this.identifier = nextIdentifier++;
+
+        this.backingArena.registerOwner(this);
     }
 
     public interface AllocationChangeConsumer {
@@ -51,10 +53,9 @@ public class RegionAllocatorHandle implements AllocatorBase, SizedTreeMap.Sized 
         this.backingArena.free(entry);
     }
 
-    @Override
     public void deleteSingleOwner(CommandList commands) {
         // differentiation of single-owner or shared deletion is handled at the arena level
-        this.backingArena.deleteSingleOwner(commands);
+        this.backingArena.deleteSingleOwner(commands, this);
     }
 
     @Override

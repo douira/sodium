@@ -24,12 +24,13 @@ public class SizedTreeMap<V extends SizedTreeMap.Sized> extends TreeMap<Long, V>
         }
     }
 
-    public void addSized(V value) {
+    public V addSized(V value) {
         var key = value.makeKey();
-        super.put(key, value);
+        var previous = super.put(key, value);
         if (this.cachedHighestEntry != null && Long.compareUnsigned(key, this.cachedHighestEntry.getKey()) > 0) {
             this.cachedHighestEntry = null;
         }
+        return previous;
     }
 
     public V removeSized(V value) {

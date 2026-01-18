@@ -206,6 +206,9 @@ public class GlBufferArena implements AllocatorBase {
         this.usedSegments += Long.signum(deltaUsed);
     }
 
+    public void registerOwner(RegionAllocatorHandle regionAllocatorHandle) {
+    }
+
     GlBufferSegment alloc(long size, RegionAllocatorHandle owner, int ownerIndex) {
         this.checkAssertions();
 
@@ -290,8 +293,7 @@ public class GlBufferArena implements AllocatorBase {
         this.checkAssertions();
     }
 
-    @Override
-    public void deleteSingleOwner(CommandList commands) {
+    public void deleteSingleOwner(CommandList commands, RegionAllocatorHandle owner) {
         commands.deleteBuffer(this.arenaBuffer);
     }
 

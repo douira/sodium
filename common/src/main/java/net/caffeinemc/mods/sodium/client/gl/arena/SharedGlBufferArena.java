@@ -10,6 +10,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
     private static final int TRANSFER_ABORTED = -1;
     final SizedTreeMap<RegionAllocatorHandle> ownersByUsed = new SizedTreeMap<>();
     private boolean isEmptying = false;
+    private SharedGlBufferArena compactionPair = null;
 
     private final int identifier;
     private static int nextIdentifier = 1;
@@ -30,12 +31,16 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
     }
 
     @Override
-    public void deleteSingleOwner(CommandList commands) {
+    public void deleteSingleOwner(CommandList commands, RegionAllocatorHandle owner) {
         // don't delete on single-owner deletion
+        this.removeOwner(owner);
     }
 
     public void deleteShared(CommandList commands) {
-        super.deleteSingleOwner(commands);
+        if (this.compactionPair != null) {
+            this.compactionPair.compactionPair = null;
+        }
+        super.deleteSingleOwner(commands, null);
     }
 
     public long getUsed() {
@@ -44,6 +49,10 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
 
     public long getCapacity() {
         return this.capacity;
+    }
+
+    public long getFree() {
+        return this.capacity - this.used;
     }
 
     public boolean isEmpty() {
@@ -57,11 +66,46 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
 
     public void setEmptying(boolean emptying) {
         this.isEmptying = emptying;
+        if (!emptying) {
+            if (this.compactionPair != null) {
+                this.compactionPair.compactionPair = null;
+            }
+            this.compactionPair = null;
+        }
+    }
+
+    public void setCompactionTarget(SharedGlBufferArena target) {
+        this.compactionPair = target;
+        this.isEmptying = true;
+    }
+
+    public void setAsCompactionTargetOf(SharedGlBufferArena source) {
+        this.compactionPair = source;
+    }
+
+    public boolean isCompactionTarget() {
+        return this.compactionPair != null && !this.isEmptying;
+    }
+
+    public boolean isCompactionSource() {
+        return this.compactionPair != null && this.isEmptying;
+    }
+
+    protected void addOwner(RegionAllocatorHandle owner) {
+        if (this.ownersByUsed.addSized(owner) != null) {
+            throw new IllegalStateException("Owner already exists in arena");
+        }
+    }
+
+    protected void removeOwner(RegionAllocatorHandle owner) {
+        if (this.ownersByUsed.removeSized(owner) == null) {
+            throw new IllegalStateException("Owner does not exist in arena");
+        }
     }
 
     @Override
     void updateUsed(long deltaUsed, RegionAllocatorHandle owner) {
-        this.ownersByUsed.removeSized(owner);
+        this.removeOwner(owner);
 
         var segmentDelta = Long.signum(deltaUsed);
         this.used += deltaUsed;
@@ -69,19 +113,23 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         this.usedSegments += segmentDelta;
         owner.usedSegments += segmentDelta;
 
-        this.ownersByUsed.addSized(owner);
+        this.addOwner(owner);
+    }
+
+    @Override
+    public void registerOwner(RegionAllocatorHandle regionAllocatorHandle) {
+        super.registerOwner(regionAllocatorHandle);
+        this.addOwner(regionAllocatorHandle);
     }
 
     public float getGlobalFreeFractionAfterEmptying(long totalCapacity, long totalUnfragmentedFree) {
-        long leastUsedFree = this.capacity - this.used;
-        long otherFree = totalUnfragmentedFree - leastUsedFree;
-        long remainingFreeAfterDealloc = otherFree - this.used;
+        long otherUnfragmentedFree = totalUnfragmentedFree - this.getBiggestFreeSegmentSize();
+        long remainingFreeAfterDealloc = otherUnfragmentedFree - this.used;
         long remainingCapacityAfterDealloc = totalCapacity - this.capacity;
         return (float) remainingFreeAfterDealloc / remainingCapacityAfterDealloc;
     }
 
     public boolean continueEmptying(CommandList commands, ArenaAggregator.DefragBudget budget) {
-        // TODO: if eviction requires creating a new arena due to fragmentation/sizing, stop emptying.
         if (!this.isEmptying) {
             throw new IllegalStateException("Arena is not emptying");
         }
@@ -99,7 +147,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
 
             // stop emptying if there's no arena that can accommodate the eviction
             if (copyCount == TRANSFER_ABORTED) {
-                this.ownersByUsed.addSized(ownerToEvict);
+                this.addOwner(ownerToEvict);
                 this.isEmptying = false;
                 break;
             }
@@ -114,13 +162,16 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
     }
 
     private int estimateAndTransferOwner(CommandList commands, RegionAllocatorHandle ownerToEvict, boolean allowNewAllocation) {
+        if (this.isCompactionSource()) {
+            return this.transferOwnerTo(commands, ownerToEvict, this.compactionPair);
+        }
         return this.estimateAndTransferUploadingOwner(commands, ownerToEvict.usedSegments, ownerToEvict, ownerToEvict.used, allowNewAllocation);
     }
 
     private int estimateAndTransferUploadingOwner(CommandList commands, int finalSegmentCount, RegionAllocatorHandle biggestUsageOwner, long finalUsage, boolean allowNewAllocation) {
         // TODO: when estimating new capacity, take into account how full the section already is since a full section will not grow much anymore
         var newCapacity = GlBufferArena.estimateNewCapacity(finalSegmentCount, biggestUsageOwner.getFillFractionInv(), finalUsage);
-        return this.transferOwnerToNewArena(commands, biggestUsageOwner, newCapacity, allowNewAllocation);
+        return this.evictOwner(commands, biggestUsageOwner, newCapacity, allowNewAllocation);
     }
 
     @Override
@@ -154,6 +205,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
             }
 
             // by construction, either the owner is the biggest one and is getting moved to its own arena, or another owner is bigger and this one will fit into this young gen arena
+            this.removeOwner(biggestUsageOwner);
             estimateAndTransferUploadingOwner(commands, biggestUsageSegmentCount, biggestUsageOwner, biggestUsage, true);
 
             // try uploading again
@@ -161,16 +213,19 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         } while (!queue.isEmpty());
     }
 
-    private int transferOwnerToNewArena(CommandList commands, RegionAllocatorHandle owner, long newCapacity, boolean allowNewAllocation) {
+    private int evictOwner(CommandList commands, RegionAllocatorHandle owner, long newCapacity, boolean allowNewAllocation) {
         var targetArena = this.parent.getArenaFittingFor(commands, newCapacity, this.stride, allowNewAllocation);
         if (targetArena == null && !allowNewAllocation) {
             return TRANSFER_ABORTED;
         }
+        return transferOwnerTo(commands, owner, targetArena);
+    }
+
+    private int transferOwnerTo(CommandList commands, RegionAllocatorHandle owner, GlBufferArena targetArena) {
         if (targetArena == this) {
             throw new IllegalStateException("Target arena is the same as the source arena");
         }
         owner.setBackingArena(targetArena);
-        this.ownersByUsed.removeSized(owner);
 
         // extract all segments owned by this owner, and reassign them to the new arena.
         // we also need to patch up the preceding and following segments to remove references to the extracted segments.
@@ -195,7 +250,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
             throw new UnsupportedOperationException("New capacity must be larger than used size");
         }
 
-        this.ownersByUsed.addSized(owner);
+        this.addOwner(owner);
 
         if (segments.isEmpty()) {
             return 0;
@@ -312,9 +367,9 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
             }
             // next is free, expand it
             else if (next.isFree()) {
+                this.removeFreeSegment(next);
                 this.head = next;
                 next.setOffset(0);
-                this.removeFreeSegment(next);
                 next.setLength(next.getLength() + current.getLength());
                 this.addFreeSegment(next);
             }
