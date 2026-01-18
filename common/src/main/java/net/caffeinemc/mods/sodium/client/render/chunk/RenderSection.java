@@ -9,12 +9,9 @@ import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.VisibilityEncodi
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.data.TranslucentData;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
-import net.minecraft.world.level.block.entity.BlockEntity;
+import org.jetbrains.annotations.Nullable;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The render state object for a chunk section. This contains all the graphics state for each render pass along with
@@ -32,7 +29,7 @@ public class RenderSection {
     private long visibilityData = VisibilityEncoding.NULL;
 
     private int incomingDirections;
-    private int lastVisibleFrame = -1;
+    private int lastVisibleSearchToken = -1;
 
     private int adjacentMask;
     public RenderSection
@@ -43,13 +40,7 @@ public class RenderSection {
             adjacentWest,
             adjacentEast;
 
-
     // Rendering State
-    private boolean built = false; // merge with the flags?
-    private int flags = RenderSectionFlags.NONE;
-    private BlockEntity @Nullable[] globalBlockEntities;
-    private BlockEntity @Nullable[] culledBlockEntities;
-    private TextureAtlasSprite @Nullable[] animatedSprites;
     @Nullable
     private TranslucentData translucentData;
 
@@ -152,32 +143,22 @@ public class RenderSection {
     }
 
     private boolean setRenderState(@NonNull BuiltSectionInfo info) {
-        var prevBuilt = this.built;
-        var prevFlags = this.flags;
+        var prevFlags = this.region.getSectionFlags(this.sectionIndex);
         var prevVisibilityData = this.visibilityData;
 
-        this.built = true;
-        this.flags = info.flags;
+        this.region.setSectionRenderState(this.sectionIndex, info);
         this.visibilityData = info.visibilityData;
-
-        this.globalBlockEntities = info.globalBlockEntities;
-        this.culledBlockEntities = info.culledBlockEntities;
-        this.animatedSprites = info.animatedSprites;
 
         // the section is marked as having received graph-relevant changes if it's build state, flags, or connectedness has changed.
         // the entities and sprites don't need to be checked since whether they exist is encoded in the flags.
-        return !prevBuilt || prevFlags != this.flags || prevVisibilityData != this.visibilityData;
+        return prevFlags != this.region.getSectionFlags(this.sectionIndex) || prevVisibilityData != this.visibilityData;
     }
 
     private boolean clearRenderState() {
-        var wasBuilt = this.built;
+        var wasBuilt = this.isBuilt();
 
-        this.built = false;
-        this.flags = RenderSectionFlags.NONE;
+        this.region.clearSectionRenderState(this.sectionIndex);
         this.visibilityData = VisibilityEncoding.NULL;
-        this.globalBlockEntities = null;
-        this.culledBlockEntities = null;
-        this.animatedSprites = null;
 
         // changes to data if it moves from built to not built don't matter, so only build state changes matter
         return wasBuilt;
@@ -217,14 +198,6 @@ public class RenderSection {
      */
     public int getOriginZ() {
         return this.chunkZ << 4;
-    }
-
-    /**
-     * @return The squared distance from the center of this chunk in the level to the center of the block position
-     * given by {@param pos}
-     */
-    public float getSquaredDistance(BlockPos pos) {
-        return this.getSquaredDistance(pos.getX() + 0.5f, pos.getY() + 0.5f, pos.getZ() + 0.5f);
     }
 
     /**
@@ -284,7 +257,7 @@ public class RenderSection {
     }
 
     public boolean isBuilt() {
-        return this.built;
+        return (this.region.getSectionFlags(this.sectionIndex) & RenderSectionFlags.MASK_IS_BUILT) != 0;
     }
 
     public int getSectionIndex() {
@@ -295,12 +268,16 @@ public class RenderSection {
         return this.region;
     }
 
-    public void setLastVisibleFrame(int frame) {
-        this.lastVisibleFrame = frame;
+    public boolean needsRender() {
+        return this.region.sectionNeedsRender(this.sectionIndex);
     }
 
-    public int getLastVisibleFrame() {
-        return this.lastVisibleFrame;
+    public void setLastVisibleSearchToken(int frame) {
+        this.lastVisibleSearchToken = frame;
+    }
+
+    public int getLastVisibleSearchToken() {
+        return this.lastVisibleSearchToken;
     }
 
     public int getIncomingDirections() {
@@ -316,39 +293,10 @@ public class RenderSection {
     }
 
     /**
-     * Returns a bitfield containing the {@link RenderSectionFlags} for this built section.
-     */
-    public int getFlags() {
-        return this.flags;
-    }
-
-    /**
      * Returns the occlusion culling data which determines this chunk's connectedness on the visibility graph.
      */
     public long getVisibilityData() {
         return this.visibilityData;
-    }
-
-    /**
-     * Returns the collection of animated sprites contained by this rendered chunk section.
-     */
-    public TextureAtlasSprite @Nullable[] getAnimatedSprites() {
-        return this.animatedSprites;
-    }
-
-    /**
-     * Returns the collection of block entities contained by this rendered chunk.
-     */
-    public BlockEntity @Nullable[] getCulledBlockEntities() {
-        return this.culledBlockEntities;
-    }
-
-    /**
-     * Returns the collection of block entities contained by this rendered chunk, which are not part of its culling
-     * volume. These entities should always be rendered regardless of the render being visible in the frustum.
-     */
-    public BlockEntity @Nullable[] getGlobalBlockEntities() {
-        return this.globalBlockEntities;
     }
 
     public @Nullable ChunkJob getRunningJob() {
