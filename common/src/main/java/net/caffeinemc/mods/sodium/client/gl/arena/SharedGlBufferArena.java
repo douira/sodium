@@ -369,6 +369,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
                 this.head = next;
                 next.setOffset(0);
                 next.setLength(next.getLength() + current.getLength());
+                next.setPrev(null);
                 this.addFreeSegment(next);
             }
             // next is not free, create new free segment as head
