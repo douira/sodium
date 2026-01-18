@@ -74,7 +74,9 @@ public class ArenaAggregator {
                 capacitySize = requiredSize * 2;
             } else {
                 maxSize = Long.MAX_VALUE;
-                if (requiredSize >= MathUtil.fromMib(32) && newArenaCount >= 3) {
+                if (requiredSize >= MathUtil.fromMib(256)) {
+                    capacitySize = requiredSize * 2;
+                } else if (requiredSize >= MathUtil.fromMib(32) && newArenaCount >= 3) {
                     capacitySize = requiredSize * 4;
                 }
             }

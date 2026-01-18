@@ -22,6 +22,7 @@ import java.util.stream.Stream;
 
 public class GlBufferArena implements AllocatorBase {
     public static boolean CHECK_ASSERTIONS = false;
+    public static boolean CHECK_SEGMENT_ASSERTIONS = true;
 
     // how many segments we require to be present before we calculate an average size
     public static final int MIN_SEGMENTS_FOR_AVG = 16;
@@ -428,7 +429,7 @@ public class GlBufferArena implements AllocatorBase {
     }
 
     void checkSegmentAssertions(GlBufferSegment seg) {
-        if (CHECK_ASSERTIONS) {
+        if (CHECK_SEGMENT_ASSERTIONS || CHECK_ASSERTIONS) {
             if (seg.getOffset() < 0) {
                 throw new IllegalStateException("segment.start < 0: out of bounds");
             } else if (seg.getEnd() > this.capacity) {
