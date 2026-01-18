@@ -37,10 +37,11 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
     }
 
     public void deleteShared(CommandList commands) {
+        super.deleteSingleOwner(commands, null);
         if (this.compactionPair != null) {
             this.compactionPair.compactionPair = null;
+            this.compactionPair = null;
         }
-        super.deleteSingleOwner(commands, null);
     }
 
     public long getUsed() {
@@ -66,29 +67,27 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
 
     public void setEmptying(boolean emptying) {
         this.isEmptying = emptying;
-        if (!emptying) {
-            if (this.compactionPair != null) {
-                this.compactionPair.compactionPair = null;
-            }
+        if (!emptying && this.compactionPair != null) {
+            this.compactionPair.compactionPair = null;
             this.compactionPair = null;
         }
-    }
-
-    public void setCompactionTarget(SharedGlBufferArena target) {
-        this.compactionPair = target;
-        this.isEmptying = true;
-    }
-
-    public void setAsCompactionTargetOf(SharedGlBufferArena source) {
-        this.compactionPair = source;
     }
 
     public boolean isCompactionTarget() {
         return this.compactionPair != null && !this.isEmptying;
     }
 
-    public boolean isCompactionSource() {
-        return this.compactionPair != null && this.isEmptying;
+    public boolean isNotCompacting() {
+        return this.compactionPair == null;
+    }
+
+    public void makeCompactionSource(SharedGlBufferArena targetArena) {
+        if (this.compactionPair != null || targetArena.compactionPair != null) {
+            throw new IllegalStateException("One of the arenas is already part of a compaction pair");
+        }
+        this.isEmptying = true;
+        this.compactionPair = targetArena;
+        targetArena.compactionPair = this;
     }
 
     protected void addOwner(RegionAllocatorHandle owner) {
@@ -137,10 +136,9 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         int copyCount = 0;
         while (copyCount == 0 && !this.isEmpty()) {
             // get the biggest owner that fits into the budget
-            // TODO: what happens when it doesn't fit into the budget? we just take one anyway?
-            var ownerToEvict = this.ownersByUsed.removeLargestOfSizeAtMost(budget.getRemainingCopyBytes());
+            var ownerToEvict = this.ownersByUsed.removeNext();
             if (ownerToEvict == null) {
-                break;
+                throw new IllegalStateException("No owner to evict found even though arena is not empty");
             }
 
             copyCount = estimateAndTransferOwner(commands, ownerToEvict, false);
@@ -162,9 +160,6 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
     }
 
     private int estimateAndTransferOwner(CommandList commands, RegionAllocatorHandle ownerToEvict, boolean allowNewAllocation) {
-        if (this.isCompactionSource()) {
-            return this.transferOwnerTo(commands, ownerToEvict, this.compactionPair);
-        }
         return this.estimateAndTransferUploadingOwner(commands, ownerToEvict.usedSegments, ownerToEvict, ownerToEvict.used, allowNewAllocation);
     }
 
@@ -205,6 +200,9 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
             }
 
             // by construction, either the owner is the biggest one and is getting moved to its own arena, or another owner is bigger and this one will fit into this young gen arena
+            if (biggestUsageOwner == null) {
+                throw new IllegalStateException("No owner found to evict");
+            }
             this.removeOwner(biggestUsageOwner);
             estimateAndTransferUploadingOwner(commands, biggestUsageSegmentCount, biggestUsageOwner, biggestUsage, true);
 

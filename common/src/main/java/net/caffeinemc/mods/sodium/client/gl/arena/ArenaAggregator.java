@@ -32,8 +32,13 @@ public class ArenaAggregator {
     private static final float PAUSE_DEALLOCATION_ABOVE_FRACTION = 0.02f / 1_000_000_000f;
     // resize to compact if an arena's free space accounts for this much of the total free space
     private static final float RESIZE_TO_COMPACT_TOTAL_FREE_FRACTION = 0.05f;
+    private static final float COMPACTION_MARGIN = 0.1f;
 
     private static final GlBufferUsage BUFFER_USAGE = GlBufferUsage.STATIC_DRAW;
+    private static final long NO_MAX_CAPACITY = 0;
+    private static final int DISALLOW_NEW_ALLOCATION = 0;
+    private static final int ALLOW_NEW_ALLOCATION = 1;
+    private static final int REQUIRE_NEW_ALLOCATION = 2;
 
     final StagingBuffer stagingBuffer;
     private final GlMutableBuffer[] freeBuffers = new GlMutableBuffer[8];
@@ -48,8 +53,10 @@ public class ArenaAggregator {
                 default -> MathUtil.fromMib(64);
             };
             var capacitySize = requiredSize * 3;
-            if (maxSize < Long.MAX_VALUE) {
+            if (maxSize != NO_MAX_CAPACITY) {
                 capacitySize = requiredSize * 2;
+            } else {
+                maxSize = Long.MAX_VALUE;
             }
             return Math.min(Math.max(capacitySize, factorSize), maxSize);
         }
@@ -63,10 +70,13 @@ public class ArenaAggregator {
                 default -> MathUtil.fromMib(256);
             };
             var capacitySize = requiredSize * 7;
-            if (maxSize < Long.MAX_VALUE) {
+            if (maxSize != NO_MAX_CAPACITY) {
                 capacitySize = requiredSize * 2;
-            } else if (requiredSize >= MathUtil.fromMib(32) && newArenaCount >= 3) {
-                capacitySize = requiredSize * 4;
+            } else {
+                maxSize = Long.MAX_VALUE;
+                if (requiredSize >= MathUtil.fromMib(32) && newArenaCount >= 3) {
+                    capacitySize = requiredSize * 4;
+                }
             }
             return Math.min(Math.max(capacitySize, factorSize), maxSize);
         }
@@ -110,10 +120,6 @@ public class ArenaAggregator {
             return this.copyCount <= 0 || this.copyBytes <= 0 || this.copyElements <= 0;
         }
 
-        public boolean isBudgetEmpty() {
-            return this.copyCount <= 0 || this.copyBytes <= 0;
-        }
-
         public boolean elementCopyExceedsBudget(long elements) {
             return elements > this.copyElements;
         }
@@ -125,10 +131,6 @@ public class ArenaAggregator {
         public long getUsedCopyBytes() {
             return this.startCopyBytes - this.copyBytes;
         }
-
-        public long getRemainingCopyBytes() {
-            return this.copyBytes;
-        }
     }
 
     private abstract class DataType {
@@ -136,7 +138,7 @@ public class ArenaAggregator {
         final int stride;
         final ArrayList<SharedGlBufferArena> arenas;
         long totalUsedLastCheckpoint;
-        boolean pauseDeallocation = false;
+        boolean pauseDeallocation = true;
 
         DataType(String name, int stride) {
             this.name = name;
@@ -152,19 +154,25 @@ public class ArenaAggregator {
             return new SharedGlBufferArena(ArenaAggregator.this, buffer, actualCapacity, this.stride);
         }
 
-        SharedGlBufferArena ensureSharedArena(CommandList commands, long requiredCapacity, boolean allowNewAllocation, long maxCapacity) {
+        SharedGlBufferArena ensureSharedArena(CommandList commands, long requiredCapacity, int newAllocationMode, long maxCapacity) {
             SharedGlBufferArena bestArena = null;
-            long biggestFreeSegmentSize = requiredCapacity;
-            for (var arena : this.arenas) {
-                long arenaBiggestFreeSegmentSize = arena.getBiggestFreeSegmentSize();
-                if (!arena.isEmptying() && !arena.isCompactionTarget() && arenaBiggestFreeSegmentSize >= biggestFreeSegmentSize) {
-                    bestArena = arena;
-                    biggestFreeSegmentSize = arenaBiggestFreeSegmentSize;
+            if (newAllocationMode != REQUIRE_NEW_ALLOCATION) {
+                long biggestFreeSegmentSize = requiredCapacity;
+                for (var arena : this.arenas) {
+                    long arenaBiggestFreeSegmentSize = arena.getBiggestFreeSegmentSize();
+                    if (!arena.isEmptying() && arenaBiggestFreeSegmentSize >= biggestFreeSegmentSize) {
+                        bestArena = arena;
+                        biggestFreeSegmentSize = arenaBiggestFreeSegmentSize;
+                    }
                 }
             }
 
-            if (bestArena == null && allowNewAllocation) {
-                bestArena = createSharedArena(commands, this.calculateArenaSize(this.arenas.size() + 1, requiredCapacity * this.stride, maxCapacity * this.stride));
+            if (bestArena == null && newAllocationMode != DISALLOW_NEW_ALLOCATION) {
+                var allocationSize = this.calculateArenaSize(this.arenas.size() + 1, requiredCapacity * this.stride, maxCapacity * this.stride);
+                if (allocationSize <= 0) {
+                    throw new IllegalStateException("Cannot allocate arena of with " + requiredCapacity + " bytes");
+                }
+                bestArena = createSharedArena(commands, allocationSize);
                 this.arenas.add(bestArena);
             }
 
@@ -226,7 +234,7 @@ public class ArenaAggregator {
             // perform emptying on the currently emptying arena
             if (emptyingArena != null) {
                 // make sure the arena that's emptying wouldn't cause there to be too little free space or too few arenas
-                if ((emptyingArena.getGlobalFreeFractionAfterEmptying(totalCapacity, totalUnfragmentedFree) < FREE_FRACTION_AFTER_DEALLOC_ABORT_LIMIT || !canDeleteArena || this.pauseDeallocation) && !emptyingArena.isCompactionSource()) {
+                if (emptyingArena.getGlobalFreeFractionAfterEmptying(totalCapacity, totalUnfragmentedFree) < FREE_FRACTION_AFTER_DEALLOC_ABORT_LIMIT || !canDeleteArena || this.pauseDeallocation) {
                     emptyingArena.setEmptying(false);
                     emptyingArena = null;
                 }
@@ -243,9 +251,10 @@ public class ArenaAggregator {
                 return;
             }
 
-            // run defragmentation and find the least used arena that's not currently emptying to potentially empty
+            // run defragmentation and identify candidates for types of emptying
             SharedGlBufferArena leastUsedArena = null;
-            SharedGlBufferArena biggestFreeArena = null;
+            SharedGlBufferArena smallestArena = null;
+            SharedGlBufferArena compactionCandidate = null;
             for (int i = 0; i < this.arenas.size(); i++) {
                 int arenaIndex = (ArenaAggregator.this.arenaDefragOffset + i) % this.arenas.size();
                 var arena = this.arenas.get(arenaIndex);
@@ -255,8 +264,12 @@ public class ArenaAggregator {
                         leastUsedArena = arena;
                     }
 
-                    if (biggestFreeArena == null || arena.getFree() > biggestFreeArena.getFree()) {
-                        biggestFreeArena = arena;
+                    if (smallestArena == null || arena.getCapacity() < smallestArena.getCapacity()) {
+                        smallestArena = arena;
+                    }
+
+                    if ((compactionCandidate == null || arena.getFree() > compactionCandidate.getFree()) && arena.isNotCompacting()) {
+                        compactionCandidate = arena;
                     }
 
                     if (!budget.isElementBudgetEmpty()) {
@@ -266,39 +279,30 @@ public class ArenaAggregator {
             }
 
             // check if we can deallocate the least used arena by relocating its data into the others
-            if (emptyingArena == null && leastUsedArena != null && canDeleteArena && !this.pauseDeallocation &&
+            if (emptyingArena == null && leastUsedArena != null && canDeleteArena && !this.pauseDeallocation && leastUsedArena.isNotCompacting() &&
                     leastUsedArena.getGlobalFreeFractionAfterEmptying(totalCapacity, totalUnfragmentedFree) >= MIN_FREE_FRACTION_AFTER_DEALLOC) {
                 leastUsedArena.setEmptying(true);
                 emptyingArena = leastUsedArena;
             }
 
-            // alternative path: if no arena has been selected for emptying, check if we can transfer the smallest arena's data into the others
-            if (emptyingArena == null && canDeleteArena) {
-                SharedGlBufferArena smallestArena = null;
-                for (var arena : this.arenas) {
-                    // we can assume no arena is emptying because otherwise emptyingArena would not be null here
-                    if (smallestArena == null || arena.getCapacity() < smallestArena.getCapacity()) {
-                        smallestArena = arena;
-                    }
-                }
-
-                if (smallestArena != null &&
-                        smallestArena.getGlobalFreeFractionAfterEmptying(totalCapacity, totalUnfragmentedFree) >= MIN_FREE_FRACTION_AFTER_DEALLOC) {
-                    smallestArena.setEmptying(true);
-                    emptyingArena = smallestArena;
-                }
+            // if no arena has been selected for emptying, check if we can transfer the smallest arena's data into the others
+            if (emptyingArena == null && canDeleteArena && smallestArena != null && smallestArena.isNotCompacting() &&
+                    smallestArena.getGlobalFreeFractionAfterEmptying(totalCapacity, totalUnfragmentedFree) >= MIN_FREE_FRACTION_AFTER_DEALLOC) {
+                smallestArena.setEmptying(true);
+                emptyingArena = smallestArena;
             }
 
+            // TODO: this does't work well yet, leads to excessive allocation and buffers that get immediately deleted
             // if there's not yet an emptying arena, check if we can resize the biggest free arena to compact it
-            if (emptyingArena == null && biggestFreeArena != null) {
-                float freeFraction = biggestFreeArena.getFree() / (float) totalUnfragmentedFree;
-                if (freeFraction >= RESIZE_TO_COMPACT_TOTAL_FREE_FRACTION) {
-                    var compactionTargetArena = this.ensureSharedArena(commands, biggestFreeArena.getUsed(), true, biggestFreeArena.getUsed());
-                    biggestFreeArena.setCompactionTarget(compactionTargetArena);
-                    compactionTargetArena.setAsCompactionTargetOf(biggestFreeArena);
-                    // emptyingArena = biggestFreeArena;
-                }
-            }
+//            if (emptyingArena == null && compactionCandidate != null && !this.pauseDeallocation) {
+//                float freeFraction = compactionCandidate.getFree() / (float) totalUnfragmentedFree;
+//                if (freeFraction >= RESIZE_TO_COMPACT_TOTAL_FREE_FRACTION) {
+//                    var sizeTarget = compactionCandidate.getUsed() + (long) (compactionCandidate.getFree() * COMPACTION_MARGIN);
+//                    var compactionTarget = this.ensureSharedArena(commands, compactionCandidate.getUsed(), REQUIRE_NEW_ALLOCATION, sizeTarget);
+//                    compactionCandidate.makeCompactionSource(compactionTarget);
+//                    // emptyingArena = biggestFreeArena;
+//                }
+//            }
         }
     }
 
@@ -331,7 +335,7 @@ public class ArenaAggregator {
 
     GlBufferArena getArenaFittingFor(CommandList commands, long requiredCapacity, int stride, boolean allowNewAllocation) {
         // TODO: create arena size based on top k region sizes, and scale up if all regions are big
-        return getDataTypeForStride(stride).ensureSharedArena(commands, requiredCapacity, allowNewAllocation, Long.MAX_VALUE);
+        return getDataTypeForStride(stride).ensureSharedArena(commands, requiredCapacity, allowNewAllocation ? ALLOW_NEW_ALLOCATION : DISALLOW_NEW_ALLOCATION, NO_MAX_CAPACITY);
     }
 
     GlBufferArena createDedicatedArena(CommandList commands, long requiredCapacity, int stride) {

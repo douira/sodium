@@ -55,12 +55,12 @@ public class SizedTreeMap<V extends SizedTreeMap.Sized> extends TreeMap<Long, V>
         return removed;
     }
 
-    public V removeLargestOfSizeAtMost(long maxSize) {
-        var headMap = this.headMap((maxSize + 1) << 32);
-        if (headMap.isEmpty()) {
+    public V removeNext() {
+        var entry = this.pollFirstEntry();
+        if (entry == null) {
             return null;
         }
-        var removed = headMap.pollLastEntry().getValue();
+        var removed = entry.getValue();
         clearCacheWithRemoved(removed);
         return removed;
     }
