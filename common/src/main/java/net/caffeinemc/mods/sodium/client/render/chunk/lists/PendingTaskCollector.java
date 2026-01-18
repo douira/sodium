@@ -80,7 +80,7 @@ public class PendingTaskCollector implements OcclusionCuller.GraphOcclusionVisit
 
         // in a pair da > db both distances can be up to 8 greater or 8 smaller.
         // since we only want to apply occlusion if every combination satisfies the occlusion condition,
-        // we would need to do da - 8 > db + 8 and da + 8 > db - 8, which is equivalent to da > db + 16
+        // we would need to do combinations of da -/+ 8 > db -/+ 8, which is equivalent to the worst case da > db + 16
         var margin = 32 * width - 16;
         var angleOcclusionMask = 0L;
         if (dx > dy + margin || dz > dy + margin) {
