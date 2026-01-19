@@ -29,6 +29,8 @@ public class OcclusionCuller {
     private int token;
     private GraphOcclusionVisitor visitor;
     private Viewport viewport;
+    private SectionPos origin;
+    private SectionPos inBoundsOrigin;
     private float searchDistance;
     private boolean useOcclusionCulling;
 
@@ -129,29 +131,38 @@ public class OcclusionCuller {
     }
 
     public int findVisible(GraphOcclusionVisitor visitor,
-                            Viewport viewport,
-                            float searchDistance,
-                            boolean useOcclusionCulling,
+                           Viewport viewport,
+                           float searchDistance,
+                           boolean useOcclusionCulling,
                            CancellationToken cancellationToken) {
         this.visitor = visitor;
         this.viewport = viewport;
         this.searchDistance = searchDistance;
         this.useOcclusionCulling = useOcclusionCulling;
 
-        final var queues = this.queue;
-        queues.reset();
+        this.queue.reset();
 
         // get a token for this bfs run by incrementing the counter.
         // It doesn't need to be atomic since there's no concurrent access, but it needs to be synced to other threads.
         this.token = this.tokenSource;
         this.tokenSource = this.token + 1;
 
-        this.init(queues.write());
+        this.origin = viewport.getChunkCoord();
+        this.inBoundsOrigin = this.origin;
+
+        var initWriteQueue = this.queue.write();
+        this.init(initWriteQueue);
 
         // initial write so that the first flip doesn't stop the loop
         if (this.outOfWorldLayer == 0) {
-            this.initOutsideWorldHeight(queues.write());
-            this.outOfWorldLayer++;
+            while (initWriteQueue.isEmpty() && this.initOutsideWorldHeight(initWriteQueue)) {
+                this.outOfWorldLayer++;
+            }
+        }
+
+        if (this.getRenderSection(this.origin) == null) {
+            // origin outside of world
+            this.inBoundsOrigin = null;
         }
 
         while (this.queue.flip()) {
@@ -160,7 +171,7 @@ public class OcclusionCuller {
             }
 
             if (this.outOfWorldLayer > 0) {
-                this.initOutsideWorldHeight(queues.write());
+                this.initOutsideWorldHeight(this.queue.write());
                 this.outOfWorldLayer++;
             }
 
@@ -178,6 +189,7 @@ public class OcclusionCuller {
     private void processQueue(ReadQueue<RenderSection> readQueue,
                               WriteQueue<RenderSection> writeQueue) {
         RenderSection section;
+        var origin = this.viewport.getChunkCoord();
 
         // only visible sections are entered into the queue
         while ((section = readQueue.dequeue()) != null) {
@@ -209,10 +221,10 @@ public class OcclusionCuller {
 
                 // We can only traverse *outwards* from the center of the graph search, so mask off any invalid
                 // directions.
-                connections &= this.visitor.getOutwardDirections(this.viewport.getChunkCoord(), section);
+                connections &= this.visitor.getOutwardDirections(origin, section);
             }
 
-            visitNeighbors(writeQueue, section, connections);
+            visitNeighbors(writeQueue, section, connections, this.inBoundsOrigin);
         }
     }
 
@@ -259,7 +271,7 @@ public class OcclusionCuller {
         return (((dx * dx) + (dz * dz)) < (maxDistance * maxDistance)) && (Math.abs(dy) < maxDistance);
     }
 
-    private void visitNeighbors(WriteQueue<RenderSection> queue, RenderSection section, int outgoing) {
+    private void visitNeighbors(WriteQueue<RenderSection> queue, RenderSection section, int outgoing, SectionPos origin) {
         // Only traverse into neighbors which are actually present.
         // This avoids a null-check on each invocation to enqueue, and since the compiler will see that a null
         // is never encountered (after profiling), it will optimize it away.
@@ -270,30 +282,62 @@ public class OcclusionCuller {
             return;
         }
 
-        // This helps the compiler move the checks for some invariants upwards.
-        queue.ensureCapacity(6);
+        if (origin == null) {
+            // the viewpoint is outside the world, so the angle computations relying on propagating angle information
+            // from the origin section to the others won't work.
+            if (GraphDirectionSet.contains(outgoing, GraphDirection.DOWN)) {
+                visitNode(queue, section.adjacentDown, GraphDirectionSet.of(GraphDirection.UP));
+            }
 
-        if (GraphDirectionSet.contains(outgoing, GraphDirection.DOWN)) {
+            if (GraphDirectionSet.contains(outgoing, GraphDirection.UP)) {
+                visitNode(queue, section.adjacentUp, GraphDirectionSet.of(GraphDirection.DOWN));
+            }
+
+            if (GraphDirectionSet.contains(outgoing, GraphDirection.NORTH)) {
+                visitNode(queue, section.adjacentNorth, GraphDirectionSet.of(GraphDirection.SOUTH));
+            }
+
+            if (GraphDirectionSet.contains(outgoing, GraphDirection.SOUTH)) {
+                visitNode(queue, section.adjacentSouth, GraphDirectionSet.of(GraphDirection.NORTH));
+            }
+
+            if (GraphDirectionSet.contains(outgoing, GraphDirection.WEST)) {
+                visitNode(queue, section.adjacentWest, GraphDirectionSet.of(GraphDirection.EAST));
+            }
+
+            if (GraphDirectionSet.contains(outgoing, GraphDirection.EAST)) {
+                visitNode(queue, section.adjacentEast, GraphDirectionSet.of(GraphDirection.WEST));
+            }
+            return;
+        }
+
+        if (GraphDirectionSet.contains(outgoing, GraphDirection.DOWN) &&
+                section.adjacentDown.intersectSlopes(this.inBoundsOrigin, section, this.token)) {
             visitNode(queue, section.adjacentDown, GraphDirectionSet.of(GraphDirection.UP));
         }
 
-        if (GraphDirectionSet.contains(outgoing, GraphDirection.UP)) {
+        if (GraphDirectionSet.contains(outgoing, GraphDirection.UP) &&
+                section.adjacentUp.intersectSlopes(this.inBoundsOrigin, section, this.token)) {
             visitNode(queue, section.adjacentUp, GraphDirectionSet.of(GraphDirection.DOWN));
         }
 
-        if (GraphDirectionSet.contains(outgoing, GraphDirection.NORTH)) {
+        if (GraphDirectionSet.contains(outgoing, GraphDirection.NORTH) &&
+                section.adjacentNorth.intersectSlopes(this.inBoundsOrigin, section, this.token)) {
             visitNode(queue, section.adjacentNorth, GraphDirectionSet.of(GraphDirection.SOUTH));
         }
 
-        if (GraphDirectionSet.contains(outgoing, GraphDirection.SOUTH)) {
+        if (GraphDirectionSet.contains(outgoing, GraphDirection.SOUTH) &&
+                section.adjacentSouth.intersectSlopes(this.inBoundsOrigin, section, this.token)) {
             visitNode(queue, section.adjacentSouth, GraphDirectionSet.of(GraphDirection.NORTH));
         }
 
-        if (GraphDirectionSet.contains(outgoing, GraphDirection.WEST)) {
+        if (GraphDirectionSet.contains(outgoing, GraphDirection.WEST) &&
+                section.adjacentWest.intersectSlopes(this.inBoundsOrigin, section, this.token)) {
             visitNode(queue, section.adjacentWest, GraphDirectionSet.of(GraphDirection.EAST));
         }
 
-        if (GraphDirectionSet.contains(outgoing, GraphDirection.EAST)) {
+        if (GraphDirectionSet.contains(outgoing, GraphDirection.EAST) &&
+                section.adjacentEast.intersectSlopes(this.inBoundsOrigin, section, this.token)) {
             visitNode(queue, section.adjacentEast, GraphDirectionSet.of(GraphDirection.WEST));
         }
     }
@@ -325,14 +369,13 @@ public class OcclusionCuller {
     private static int nearestToZero(int min, int max) {
         // this compiles to slightly better code than Math.min(Math.max(0, min), max)
         int clamped = 0;
-        if (min > 0) { clamped = min; }
-        if (max < 0) { clamped = max; }
+        if (min > 0) {
+            clamped = min;
+        }
+        if (max < 0) {
+            clamped = max;
+        }
         return clamped;
-    }
-
-    public static boolean isWithinFrustum(Viewport viewport, RenderSection section) {
-        return viewport.isBoxVisible(section.getCenterX(), section.getCenterY(), section.getCenterZ(),
-                CHUNK_SECTION_SIZE, CHUNK_SECTION_SIZE, CHUNK_SECTION_SIZE);
     }
 
     // this bigger chunk section size is only used for frustum-testing nearby sections with large models
@@ -375,8 +418,7 @@ public class OcclusionCuller {
         }
     }
 
-    private void init(WriteQueue<RenderSection> queue)
-    {
+    private void init(WriteQueue<RenderSection> queue) {
         var origin = this.viewport.getChunkCoord();
 
         if (origin.getY() < this.level.getMinSectionY()) {
@@ -402,6 +444,7 @@ public class OcclusionCuller {
             return;
         }
 
+        section.setOriginAngles();
         section.setLastVisibleSearchToken(this.token);
         section.setIncomingDirections(GraphDirectionSet.NONE);
 
@@ -425,34 +468,35 @@ public class OcclusionCuller {
             outgoing = GraphDirectionSet.ALL;
         }
 
-        visitNeighbors(queue, section, outgoing);
+        visitNeighbors(queue, section, outgoing, this.origin);
     }
 
     // Enqueues sections that are inside the viewport using diamond spiral iteration to avoid sorting and ensure a
     // consistent order. Innermost layers are enqueued first. Within each layer, iteration starts at the northernmost
     // section and proceeds counterclockwise (N->W->S->E).
-    private void initOutsideWorldHeight(WriteQueue<RenderSection> queue) {
-        var origin = this.viewport.getChunkCoord();
+    private boolean initOutsideWorldHeight(WriteQueue<RenderSection> queue) {
         var radius = Mth.floor(this.searchDistance / 16.0f);
         var height = this.outOfWorldHeight;
         var direction = this.outOfWorldDirection;
         var layer = this.outOfWorldLayer;
+        int originX = this.origin.getX();
+        int originZ = this.origin.getZ();
 
         // Layer 0
         if (layer == 0) {
-            this.tryInitNode(queue, origin.getX(), height, origin.getZ(), direction);
+            this.tryInitNode(queue, originX, height, originZ, direction);
         }
 
         // Complete layers, excluding layer 0
         else if (layer <= radius) {
             for (int z = -layer; z < layer; z++) {
                 int x = Math.abs(z) - layer;
-                this.tryInitNode(queue, origin.getX() + x, height, origin.getZ() + z, direction);
+                this.tryInitNode(queue, originX + x, height, originZ + z, direction);
             }
 
             for (int z = layer; z > -layer; z--) {
                 int x = layer - Math.abs(z);
-                this.tryInitNode(queue, origin.getX() + x, height, origin.getZ() + z, direction);
+                this.tryInitNode(queue, originX + x, height, originZ + z, direction);
             }
         }
 
@@ -462,24 +506,30 @@ public class OcclusionCuller {
 
             for (int z = -radius; z <= -l; z++) {
                 int x = -z - layer;
-                this.tryInitNode(queue, origin.getX() + x, height, origin.getZ() + z, direction);
+                this.tryInitNode(queue, originX + x, height, originZ + z, direction);
             }
 
             for (int z = l; z <= radius; z++) {
                 int x = z - layer;
-                this.tryInitNode(queue, origin.getX() + x, height, origin.getZ() + z, direction);
+                this.tryInitNode(queue, originX + x, height, originZ + z, direction);
             }
 
             for (int z = radius; z >= l; z--) {
                 int x = layer - z;
-                this.tryInitNode(queue, origin.getX() + x, height, origin.getZ() + z, direction);
+                this.tryInitNode(queue, originX + x, height, originZ + z, direction);
             }
 
             for (int z = -l; z >= -radius; z--) {
                 int x = layer + z;
-                this.tryInitNode(queue, origin.getX() + x, height, origin.getZ() + z, direction);
+                this.tryInitNode(queue, originX + x, height, originZ + z, direction);
             }
         }
+
+        // nothing more to init
+        else {
+            return false;
+        }
+        return true;
     }
 
     private void tryInitNode(WriteQueue<RenderSection> queue, int x, int y, int z, int direction) {
@@ -492,4 +542,7 @@ public class OcclusionCuller {
         return this.sections.get(SectionPos.asLong(x, y, z));
     }
 
+    private RenderSection getRenderSection(SectionPos pos) {
+        return this.sections.get(pos.asLong());
+    }
 }
