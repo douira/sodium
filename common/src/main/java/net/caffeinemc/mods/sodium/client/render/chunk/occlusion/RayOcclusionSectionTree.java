@@ -88,8 +88,18 @@ public class RayOcclusionSectionTree extends SectionTree {
                 var radius = SECTION_HALF_DIAGONAL * (steps - i) * stepsInv;
 
                 // this pattern simulates a shape similar to the sweep of the section towards the camera
-                if (this.blockHasObstruction((int) (x - radius), (int) (y - radius), (int) (z - radius)) != Tree.NOT_PRESENT ||
-                        this.blockHasObstruction((int) (x + radius), (int) (y + radius), (int) (z + radius)) != Tree.NOT_PRESENT) {
+                boolean hasPath = false;
+                for (int corner = 0; corner < 8; corner++) {
+                    var offsetX = ((corner & 1) == 0) ? -radius : radius;
+                    var offsetY = ((corner & 2) == 0) ? -radius : radius;
+                    var offsetZ = ((corner & 4) == 0) ? -radius : radius;
+
+                    if (this.blockHasObstruction((int) (x + offsetX), (int) (y + offsetY), (int) (z + offsetZ)) != Tree.NOT_PRESENT) {
+                        hasPath = true;
+                        break;
+                    }
+                }
+                if (hasPath) {
                     continue;
                 }
 
