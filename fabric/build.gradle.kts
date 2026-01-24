@@ -93,6 +93,18 @@ dependencies {
     addEmbeddedFabricModule("fabric-resource-loader-v0")
     addEmbeddedFabricModule("fabric-resource-loader-v1")
     addEmbeddedFabricModule("fabric-transitive-access-wideners-v1")
+
+    addEmbeddedFabricModule("fabric-client-gametest-api-v1")
+}
+
+fabricApi {
+    configureTests {
+        createSourceSet = false
+        modId = "measurement-test-${project.name}"
+        enableGameTests = false
+        enableClientGameTests = true
+        eula = true
+    }
 }
 
 loom {
@@ -109,6 +121,10 @@ loom {
             appendProjectPathToConfigName = false
             ideConfigGenerated(true)
             runDir("run")
+        }
+
+        named("clientGameTest") {
+            vmArg("-Dfabric.client.gametest.disableNetworkSynchronizer=true")
         }
     }
 }

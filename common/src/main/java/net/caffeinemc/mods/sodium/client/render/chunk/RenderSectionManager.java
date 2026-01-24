@@ -66,6 +66,8 @@ import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 public class RenderSectionManager {
+    public static CullType forceCullType = CullType.REGULAR;
+
     private static final float NEARBY_REBUILD_DISTANCE = Mth.square(16.0f);
     private static final float IMMEDIATE_PRESENT_DISTANCE = Mth.square(64.0f);
     private static final float NEARBY_SORT_DISTANCE = Mth.square(25.0f);
@@ -184,6 +186,8 @@ public class RenderSectionManager {
         this.cameraPosition = cameraPosition;
     }
 
+    public static final IntArrayList sectionCounts = new IntArrayList();
+
     public void updateRenderLists(Camera camera, Viewport viewport, FogParameters fogParameters, boolean spectator, boolean updateImmediately) {
         // do sync bfs based on update immediately (flawless frames) or if the camera moved too much
         var shouldRenderSync = this.cameraTimingControl.getShouldRenderSync(camera);
@@ -194,19 +198,6 @@ public class RenderSectionManager {
 
         if (this.needsGraphUpdate) {
             this.lastGraphDirtyFrame = this.frame;
-        }
-
-        // discard unusable present and pending frustum-tested trees
-        if (this.cameraChanged) {
-            this.cullResults.remove(CullType.FRUSTUM);
-
-            this.pendingTasks.removeIf(task -> {
-                if (task instanceof FrustumCullTask cullTask) {
-                    cullTask.setCancelled();
-                    return true;
-                }
-                return false;
-            });
         }
 
         // remove all tasks that aren't in progress yet
@@ -227,6 +218,8 @@ public class RenderSectionManager {
         this.needsFrustumTaskListUpdate = false;
         this.needsGraphUpdate = false;
         this.cameraChanged = false;
+
+        sectionCounts.add(this.getVisibleChunkCount());
     }
 
     private void renderSync(Camera camera, Viewport viewport, FogParameters fogParameters, boolean spectator) {
@@ -280,15 +273,12 @@ public class RenderSectionManager {
                     var result = frustumCullTask.getResult();
                     this.frustumTaskLists = result.getFrustumTaskLists();
 
-                    // ensure no useless frustum tree is accepted
-                    if (!this.cameraChanged) {
-                        var tree = result.getTree();
-                        this.cullResults.put(CullType.FRUSTUM, tree);
-                        latestTree = tree;
-                        latestTreeCullType = CullType.FRUSTUM;
+                    var tree = result.getTree();
+                    this.cullResults.put(CullType.FRUSTUM, tree);
+                    latestTree = tree;
+                    latestTreeCullType = CullType.FRUSTUM;
 
-                        this.needsRenderListUpdate = true;
-                    }
+                    this.needsRenderListUpdate = true;
                 }
                 case GlobalCullTask globalCullTask -> {
                     var result = globalCullTask.getResult();
@@ -354,12 +344,6 @@ public class RenderSectionManager {
         for (var type : scheduleOrder) {
             var tree = this.cullResults.get(type);
 
-            // don't schedule frustum tasks if the camera just changed to prevent throwing them away constantly
-            // since they're going to be invalid by the time they're completed in the next frame
-            if (type == CullType.FRUSTUM && this.cameraChanged) {
-                continue;
-            }
-
             // schedule a task of this type if there's no valid and current result for it yet
             var searchDistance = this.getSearchDistanceForCullType(type, fogParameters);
             if ((tree == null || tree.getFrame() < this.lastGraphDirtyFrame || !tree.isValidFor(viewport, searchDistance)) &&
@@ -392,18 +376,7 @@ public class RenderSectionManager {
     private static final CullType[] COMPROMISE = { CullType.REGULAR, CullType.FRUSTUM, CullType.WIDE };
 
     private CullType[] getScheduleOrder() {
-        // if the camera is stationary, do the FRUSTUM update first to prevent the rendered section count from oscillating
-        if (!this.cameraChanged) {
-            return NARROW_TO_WIDE;
-        }
-
-        // if only the render list is dirty but there's no graph update, do REGULAR first and potentially do FRUSTUM opportunistically
-        if (!this.needsGraphUpdate) {
-            return COMPROMISE;
-        }
-
-        // if both are dirty, the camera is moving and loading new sections, do WIDE first to ensure there's any correct result
-        return WIDE_TO_NARROW;
+        return new CullType[] { forceCullType };
     }
 
     private static final LongArrayList timings = new LongArrayList();
@@ -481,27 +454,6 @@ public class RenderSectionManager {
         bestAnyTree.traverse(visibleCollector, viewport, this.getSearchDistance(fogParameters));
         this.renderLists = visibleCollector.createRenderLists(viewport);
 
-        var end = System.nanoTime();
-        var time = end - start;
-        timings.add(time);
-        if (timings.size() >= 1000) {
-            var totalAverage = (long) timings.longStream().average().orElse(0);
-            // average with removal of outliers
-            var sortedTimings = timings.longStream().sorted().toArray();
-            var trimCount = (int) (timings.size() * 0.1);
-            var sum = 0L;
-            for (int i = trimCount; i < sortedTimings.length - trimCount; i++) {
-                sum += sortedTimings[i];
-            }
-            var average = sum / (sortedTimings.length - trimCount * 2);
-            var sectionsWithGeometry = visibleCollector.getUnsortedRenderLists().stream().mapToInt(ChunkRenderList::getSectionsWithGeometryCount).sum();
-            if (sectionsWithGeometry == 0) {
-                sectionsWithGeometry = 1;
-            }
-            System.out.println("Render list culling generation took " + average / 1000 + "µs (" + totalAverage / 1000 + "µs raw, " + totalAverage / sectionsWithGeometry + "ns per section) over " + timings.size() + " samples");
-            timings.clear();
-        }
-
         this.renderTree = bestAnyTree;
     }
 
@@ -544,15 +496,7 @@ public class RenderSectionManager {
     }
 
     private float getSearchDistance(FogParameters fogParameters) {
-        float distance;
-
-        if (SodiumClientMod.options().performance.useFogOcclusion) {
-            distance = this.getEffectiveRenderDistance(fogParameters);
-        } else {
-            distance = this.getRenderDistance();
-        }
-
-        return distance;
+        return this.getRenderDistance();
     }
 
     private boolean shouldUseOcclusionCulling(Camera camera, boolean spectator) {
@@ -1389,7 +1333,7 @@ public class RenderSectionManager {
         // C: visible/total D: distance
         return String.format(
                 "C: %d/%d (%s) D: %d",
-                this.getVisibleChunkCount(),
+                sectionCounts.isEmpty() ? this.getVisibleChunkCount() : sectionCounts.getLast(),
                 this.getTotalSections(),
                 this.getCullTypeName(),
                 this.renderDistance);

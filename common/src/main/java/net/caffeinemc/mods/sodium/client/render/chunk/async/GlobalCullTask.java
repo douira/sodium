@@ -1,7 +1,6 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.async;
 
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
-import it.unimi.dsi.fastutil.longs.LongArrayList;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.DeferredTaskList;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.FrustumTaskCollector;
@@ -23,8 +22,6 @@ public class GlobalCullTask extends CullTask<GlobalCullResult> {
         this.level = level;
     }
 
-    private static final LongArrayList timings = new LongArrayList();
-
     @Override
     public GlobalCullResult runTask() {
         var tree = new TaskSectionTree(this.viewport, this.buildDistance, this.frame, this.cullType, this.level);
@@ -36,12 +33,7 @@ public class GlobalCullTask extends CullTask<GlobalCullResult> {
 
         var end = System.nanoTime();
         var time = end - start;
-        timings.add(time);
-        if (timings.size() >= 500) {
-            var average = timings.longStream().average().orElse(0);
-            System.out.println("Global culling took " + (average) / 1000 + "µs over " + timings.size() + " samples");
-            timings.clear();
-        }
+        CullTask.timings.add(time);
 
         var collector = new FrustumTaskCollector(this.viewport, this.buildDistance, this.sectionByPosition);
         tree.traverseVisiblePendingTasks(collector, this.viewport, this.buildDistance);

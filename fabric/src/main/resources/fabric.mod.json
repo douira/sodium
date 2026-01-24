@@ -51,6 +51,9 @@
     ],
     "preLaunch" : [
       "net.caffeinemc.mods.sodium.fabric.SodiumPreLaunch"
+    ],
+    "fabric-client-gametest" : [
+      "net.caffeinemc.mods.sodium.instrumentation.InstrumentedMeasurementRunner"
     ]
   },
   "custom" : {

@@ -24,6 +24,10 @@ public class SodiumClientMod {
     private static String MOD_VERSION;
 
     public static void onInitialization(String version) {
+        if (System.getProperty("fabric.client.gametest") == null) {
+            throw new IllegalStateException("This is a client gametest build, you need to add '-Dfabric.client.gametest=true' to the JVM arguments to run it.");
+        }
+
         var entries = DebugScreenEntriesAccessor.getEntries();
         entries.put(SODIUM_DEBUG_ENTRY_FULL, new SodiumDebugEntry(true));
         entries.put(SODIUM_DEBUG_ENTRY_REDUCED, new SodiumDebugEntry(false));

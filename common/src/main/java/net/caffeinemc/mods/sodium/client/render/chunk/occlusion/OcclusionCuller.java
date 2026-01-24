@@ -16,6 +16,9 @@ import net.minecraft.world.level.Level;
  * TODO idea: traverse octants of the world with separate threads for better performance?
  */
 public class OcclusionCuller {
+    public static boolean directionalVis = true;
+    public static boolean angularOcclusion = true;
+
     private final Long2ReferenceMap<RenderSection> sections;
     private final Level level;
     private final DoubleBufferedQueue<RenderSection> queue = new DoubleBufferedQueue<>();
@@ -160,7 +163,7 @@ public class OcclusionCuller {
             }
         }
 
-        if (this.getRenderSection(this.origin) == null) {
+        if (!angularOcclusion || this.getRenderSection(this.origin) == null) {
             // origin outside of world
             this.inBoundsOrigin = null;
         }
@@ -233,7 +236,7 @@ public class OcclusionCuller {
             return visibilityDataSet[0];
         }
 
-        int directionSets = this.visitor.getDirectionSets(viewport, section);
+        int directionSets = directionalVis ? this.visitor.getDirectionSets(viewport, section) : 0b11111111;
 
         // Combine the relevant visibility data sets.
         // Since each perspective can be seen from two opposite sides, two bits in each mask are set.

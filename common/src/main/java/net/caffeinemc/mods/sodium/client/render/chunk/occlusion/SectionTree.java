@@ -32,11 +32,12 @@ public class SectionTree extends PendingTaskCollector {
     }
 
     public boolean isValidFor(Viewport viewport, float searchDistance) {
-        var cameraPos = viewport.getChunkCoord();
-        return Math.abs((this.cameraX >> 4) - cameraPos.getX()) <= this.bfsWidth &&
-                Math.abs((this.cameraY >> 4) - cameraPos.getY()) <= this.bfsWidth &&
-                Math.abs((this.cameraZ >> 4) - cameraPos.getZ()) <= this.bfsWidth &&
-                this.buildDistance >= searchDistance;
+        return false;
+//        var cameraPos = viewport.getChunkCoord();
+//        return Math.abs((this.cameraX >> 4) - cameraPos.getX()) <= this.bfsWidth &&
+//                Math.abs((this.cameraY >> 4) - cameraPos.getY()) <= this.bfsWidth &&
+//                Math.abs((this.cameraZ >> 4) - cameraPos.getZ()) <= this.bfsWidth &&
+//                this.buildDistance >= searchDistance;
     }
 
     @Override

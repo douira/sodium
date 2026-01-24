@@ -7,9 +7,12 @@ import net.caffeinemc.mods.sodium.client.render.chunk.tree.Forest;
 import net.caffeinemc.mods.sodium.client.render.chunk.tree.Tree;
 import net.caffeinemc.mods.sodium.client.render.viewport.CameraTransform;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
+import net.caffeinemc.mods.sodium.instrumentation.AsyncCullingMeasurement;
 import net.minecraft.world.level.Level;
 
 public class RayOcclusionSectionTree extends SectionTree {
+    public static AsyncCullingMeasurement.RayCullMode rayCullMode = AsyncCullingMeasurement.RayCullMode.OFF;
+
     private static final float SECTION_HALF_DIAGONAL = (float) Math.sqrt(8 * 8 * 3);
     private static final float RAY_MIN_STEP_SIZE_INV = 1.0f / (SECTION_HALF_DIAGONAL * 2);
     private static final int RAY_TEST_MAX_STEPS = 12;
@@ -34,7 +37,7 @@ public class RayOcclusionSectionTree extends SectionTree {
     public boolean visitTestVisible(RenderSection section) {
         if (section.needsRender()) {
             this.lastSectionKnownEmpty = false;
-            if (this.isRayBlockedStepped(section)) {
+            if (rayCullMode != AsyncCullingMeasurement.RayCullMode.OFF && this.isRayBlockedStepped(section)) {
                 return false;
             }
         } else {
@@ -88,19 +91,26 @@ public class RayOcclusionSectionTree extends SectionTree {
                 var radius = SECTION_HALF_DIAGONAL * (steps - i) * stepsInv;
 
                 // this pattern simulates a shape similar to the sweep of the section towards the camera
-                boolean hasPath = false;
-                for (int corner = 0; corner < 8; corner++) {
-                    var offsetX = ((corner & 1) == 0) ? -radius : radius;
-                    var offsetY = ((corner & 2) == 0) ? -radius : radius;
-                    var offsetZ = ((corner & 4) == 0) ? -radius : radius;
+                if (rayCullMode == AsyncCullingMeasurement.RayCullMode.ON_SAFE) {
+                    boolean hasPath = false;
+                    for (int corner = 0; corner < 8; corner++) {
+                        var offsetX = ((corner & 1) == 0) ? -radius : radius;
+                        var offsetY = ((corner & 2) == 0) ? -radius : radius;
+                        var offsetZ = ((corner & 4) == 0) ? -radius : radius;
 
-                    if (this.blockHasObstruction((int) (x + offsetX), (int) (y + offsetY), (int) (z + offsetZ)) != Tree.NOT_PRESENT) {
-                        hasPath = true;
-                        break;
+                        if (this.blockHasObstruction((int) (x + offsetX), (int) (y + offsetY), (int) (z + offsetZ)) != Tree.NOT_PRESENT) {
+                            hasPath = true;
+                            break;
+                        }
                     }
-                }
-                if (hasPath) {
-                    continue;
+                    if (hasPath) {
+                        continue;
+                    }
+                } else {
+                    if (this.blockHasObstruction((int) (x - radius), (int) (y - radius), (int) (z - radius)) != Tree.NOT_PRESENT ||
+                            this.blockHasObstruction((int) (x + radius), (int) (y + radius), (int) (z + radius)) != Tree.NOT_PRESENT) {
+                        continue;
+                    }
                 }
 
                 // the path is blocked because there's no visited section that gives a clear line of sight

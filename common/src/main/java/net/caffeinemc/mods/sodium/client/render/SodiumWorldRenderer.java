@@ -68,7 +68,7 @@ public class SodiumWorldRenderer {
 
     private boolean useEntityCulling;
 
-    private RenderSectionManager renderSectionManager;
+    public RenderSectionManager renderSectionManager;
 
     /**
      * @return The SodiumWorldRenderer based on the current dimension
@@ -207,7 +207,7 @@ public class SodiumWorldRenderer {
         this.lastCameraPitch = pitch;
         this.lastCameraYaw = yaw;
 
-        if (cameraLocationChanged || fogDistanceChanged || cameraAngleChanged || cameraProjectionChanged) {
+        if (true || cameraLocationChanged || fogDistanceChanged || cameraAngleChanged || cameraProjectionChanged) {
             this.renderSectionManager.notifyChangedCamera();
         }
 

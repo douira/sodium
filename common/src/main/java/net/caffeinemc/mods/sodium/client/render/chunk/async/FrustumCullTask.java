@@ -1,6 +1,5 @@
 package net.caffeinemc.mods.sodium.client.render.chunk.async;
 
-import it.unimi.dsi.fastutil.longs.LongArrayList;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.DeferredTaskList;
 import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.CullType;
 import net.caffeinemc.mods.sodium.client.render.chunk.occlusion.OcclusionCuller;
@@ -17,8 +16,6 @@ public class FrustumCullTask extends CullTask<FrustumCullResult> {
         this.level = level;
     }
 
-    private static final LongArrayList timings = new LongArrayList();
-
     @Override
     public FrustumCullResult runTask() {
         var tree = new RayOcclusionSectionTree(this.viewport, this.buildDistance, this.frame, CullType.FRUSTUM, this.level);
@@ -30,12 +27,7 @@ public class FrustumCullTask extends CullTask<FrustumCullResult> {
 
         var end = System.nanoTime();
         var time = end - start;
-        timings.add(time);
-        if (timings.size() >= 500) {
-            var average = timings.longStream().average().orElse(0);
-            System.out.println("Frustum culling took " + (average) / 1000 + "µs over " + timings.size() + " samples");
-            timings.clear();
-        }
+        CullTask.timings.add(time);
 
         var frustumTaskLists = tree.getPendingTaskLists();
 
