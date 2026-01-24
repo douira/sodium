@@ -5,8 +5,6 @@ import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
-import net.fabricmc.fabric.mixin.client.gametest.ClientChunkCacheAccessor;
-import net.fabricmc.fabric.mixin.client.gametest.ClientChunkCacheStorageAccessor;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.CrashReport;
 import net.minecraft.SharedConstants;
@@ -14,10 +12,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.debug.DebugScreenEntries;
 import net.minecraft.client.gui.components.debug.DebugScreenEntryStatus;
 import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
-import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.world.entity.Relative;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
@@ -191,21 +190,18 @@ public class InstrumentedMeasurementRunner implements FabricClientGameTest {
 
     private static boolean checkChunksLoaded(Minecraft client) {
         int viewDistance = client.options.getEffectiveRenderDistance();
-        int viewDistanceSquared = viewDistance * viewDistance;
         ClientLevel world = Objects.requireNonNull(client.level);
-        ClientChunkCache.Storage chunks = ((ClientChunkCacheAccessor) world.getChunkSource()).getChunks();
-        ClientChunkCacheStorageAccessor chunksAccessor = (ClientChunkCacheStorageAccessor) (Object) chunks;
-        int centerChunkX = chunksAccessor.getCenterChunkX();
-        int centerChunkZ = chunksAccessor.getCenterChunkZ();
+        ChunkPos centerPos = Objects.requireNonNull(client.player).chunkPosition(); // instead of center chunk to avoid stale data
+        ChunkTrackingView view = ChunkTrackingView.of(centerPos, viewDistance);
 
-        for (int dz = -viewDistance; dz <= viewDistance; dz++) {
-            for (int dx = -viewDistance; dx <= viewDistance; dx++) {
-                var x = centerChunkX + dx;
-                var z = centerChunkZ + dz;
-                long distX = Math.max(0, Math.abs(dx) - 2);
-                long distZ = Math.max(0, Math.abs(dz) - 2);
-                if (distX * distX + distZ * distZ <= viewDistanceSquared &&
-                        world.getChunk(x, z, ChunkStatus.FULL, false) == null) {
+        for (int dz = -viewDistance-1; dz <= viewDistance+1; dz++) {
+            for (int dx = -viewDistance-1; dx <= viewDistance+1; dx++) {
+                var x = centerPos.x + dx;
+                var z = centerPos.z + dz;
+                boolean loaded = world.getChunk(x, z, ChunkStatus.FULL, false) != null;
+                if (view.contains(x, z) && !loaded) return false;
+                if (!view.contains(x, z) && loaded) {
+                    LOGGER.error("Unexpected chunk at {}, {}", x, z);
                     return false;
                 }
             }

@@ -19,5 +19,9 @@
     "instrumentation.ClientChunkCacheAccessor",
     "instrumentation.FramerateLimitTrackerMixin",
     "instrumentation.TestClientWorldContextImplMixin"
+  ],
+  "mixins" : [
+    "instrumentation.ChunkMapMixin",
+    "instrumentation.PlayerChunkSenderMixin"
   ]
 }
