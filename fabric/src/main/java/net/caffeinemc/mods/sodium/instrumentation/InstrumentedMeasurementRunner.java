@@ -1,5 +1,6 @@
 package net.caffeinemc.mods.sodium.instrumentation;
 
+import net.caffeinemc.mods.sodium.client.SodiumClientMod;
 import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
@@ -97,6 +98,7 @@ public class InstrumentedMeasurementRunner implements FabricClientGameTest {
             client.debugEntries.setOverlayVisible(true);
             client.debugEntries.setStatus(DebugScreenEntries.CHUNK_SOURCE_STATS, DebugScreenEntryStatus.IN_OVERLAY);
             client.options.save();
+            SodiumClientMod.options().performance.useFogOcclusion = false;
         });
 
         AsyncCullingMeasurement.WORLD_SEED.setApplier((seed) -> {
