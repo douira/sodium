@@ -1,7 +1,7 @@
 package net.caffeinemc.mods.sodium.instrumentation.core;
 
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+import java.util.List;
+import java.util.function.Supplier;
 
 public abstract class Aspect {
     private final String name;
@@ -15,7 +15,7 @@ public abstract class Aspect {
         return this.name;
     }
 
-    abstract void generateValuations(Scene scene, BiConsumer<Scene, Consumer<Scene>> sceneConsumer, Consumer<Scene> sceneWriter);
+    abstract List<Scene> generateValuations(Supplier<List<Scene>> sceneSupplier);
 
     public boolean isMeasurementAllowed() {
         return true;

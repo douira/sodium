@@ -3,9 +3,9 @@ package net.caffeinemc.mods.sodium.instrumentation.core;
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Random;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public class SubCombinationRandomizer extends Aspect {
     private final Random random;
@@ -16,11 +16,11 @@ public class SubCombinationRandomizer extends Aspect {
     }
 
     @Override
-    void generateValuations(Scene scene, BiConsumer<Scene, Consumer<Scene>> sceneConsumer, Consumer<Scene> sceneWriter) {
-        var combinations = new ReferenceArrayList<Scene>();
-        sceneConsumer.accept(scene, combinations::add);
-        Collections.shuffle(combinations, this.random);
-        combinations.forEach(sceneWriter);
+    List<Scene> generateValuations(Supplier<List<Scene>> sceneSupplier) {
+        var scenes = sceneSupplier.get();
+        var outputScenes = new ReferenceArrayList<>(scenes);
+        Collections.shuffle(outputScenes, this.random);
+        return outputScenes;
     }
 
     @Override

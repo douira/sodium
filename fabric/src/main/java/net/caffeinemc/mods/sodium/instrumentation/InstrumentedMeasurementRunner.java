@@ -61,6 +61,16 @@ public class InstrumentedMeasurementRunner implements FabricClientGameTest {
                 "fabric-renderer-api-v1",
                 "fabric-transitive-access-wideners-v1",
                 "fabric-api-base",
+                "c2me",
+                "com_electronwill_night",
+                "com_github_ben-manes_caffeine_caffeine",
+                "com_ibm_async_asyncutil",
+                "io_reactivex_rxjava3_rxjava",
+                "mixinsquared",
+                "net_objecthunter_exp4j",
+                "org_jctools_jctools",
+                "org_lwjgl_lwjgl",
+                "org_reactivestreams_reactive",
         };
         FabricLoader.getInstance().getAllMods().forEach(modContainer -> {
             var modId = modContainer.getMetadata().getId();
@@ -194,8 +204,8 @@ public class InstrumentedMeasurementRunner implements FabricClientGameTest {
         ChunkPos centerPos = Objects.requireNonNull(client.player).chunkPosition(); // instead of center chunk to avoid stale data
         ChunkTrackingView view = ChunkTrackingView.of(centerPos, viewDistance);
 
-        for (int dz = -viewDistance-1; dz <= viewDistance+1; dz++) {
-            for (int dx = -viewDistance-1; dx <= viewDistance+1; dx++) {
+        for (int dz = -viewDistance - 1; dz <= viewDistance + 1; dz++) {
+            for (int dx = -viewDistance - 1; dx <= viewDistance + 1; dx++) {
                 var x = centerPos.x + dx;
                 var z = centerPos.z + dz;
                 boolean loaded = world.getChunk(x, z, ChunkStatus.FULL, false) != null;

@@ -5,10 +5,6 @@ public interface Valuation<V> {
 
     V getValue();
 
-    default void addToReportHeader(StringBuilder sb) {
-        sb.append(this.getAspect().getName());
-    }
-
     default void addToReport(StringBuilder sb) {
         sb.append(this.getValue());
     }

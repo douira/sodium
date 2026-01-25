@@ -12,9 +12,7 @@ public class ValueListingResult<V> extends ValueCollectingResult<V, String> {
     @Override
     protected String calculateValue(Collection<V> collectedValues) {
         var sb = new StringBuilder();
-        for (var val : collectedValues) {
-            sb.append(val).append(":");
-        }
+        Context.joinIterable(sb, collectedValues, ":");
         return sb.toString();
     }
 }

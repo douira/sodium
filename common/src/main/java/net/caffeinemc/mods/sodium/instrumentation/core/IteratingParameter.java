@@ -1,7 +1,9 @@
 package net.caffeinemc.mods.sodium.instrumentation.core;
 
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
+
+import java.util.List;
+import java.util.function.Supplier;
 
 public abstract class IteratingParameter<V> extends Parameter<V> implements Iterable<V> {
     public IteratingParameter(Context context, String name) {
@@ -9,9 +11,14 @@ public abstract class IteratingParameter<V> extends Parameter<V> implements Iter
     }
 
     @Override
-    public void generateValuations(Scene scene, BiConsumer<Scene, Consumer<Scene>> sceneConsumer, Consumer<Scene> sceneWriter) {
+    List<Scene> generateValuations(Supplier<List<Scene>> sceneSupplier) {
+        var scenes = sceneSupplier.get();
+        var outputScenes = new ReferenceArrayList<Scene>(scenes.size());
         for (V value : this) {
-            scene.addValuation(this.createValuation(value), localScene -> sceneConsumer.accept(localScene, sceneWriter));
+            for (Scene scene : scenes) {
+                outputScenes.add(scene.withValuation(this.createValuation(value)));
+            }
         }
+        return outputScenes;
     }
 }

@@ -1,25 +1,30 @@
 package net.caffeinemc.mods.sodium.instrumentation.core;
 
-import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 
-import java.util.SortedMap;
-import java.util.function.Consumer;
+import java.util.Map;
 
 public class Scene {
-    private final SortedMap<Aspect, Valuation<?>> valuations;
+    private final Map<Aspect, Valuation<?>> valuations;
+    private final Context context;
 
-    private Scene(SortedMap<Aspect, Valuation<?>> valuations) {
+    private Scene(Context context, Map<Aspect, Valuation<?>> valuations) {
+        this.context = context;
         this.valuations = valuations;
     }
 
-    public Scene() {
-        this.valuations = new Reference2ObjectLinkedOpenHashMap<>();
+    public Scene(Context context) {
+        this(context, new Reference2ObjectOpenHashMap<>());
     }
 
     void prepareScene(Scene previousScene) {
-        for (var valuation : this.valuations.values()) {
-            valuation.applyToAspect(previousScene == null ?
-                    null : previousScene.valuations.get(valuation.getAspect()));
+        // important to iterate aspects in the right order
+        for (var aspect : this.context.getAspects()) {
+            var valuation = this.valuations.get(aspect);
+            if (valuation != null) {
+                valuation.applyToAspect(previousScene == null ?
+                        null : previousScene.valuations.get(valuation.getAspect()));
+            }
         }
     }
 
@@ -55,25 +60,32 @@ public class Scene {
         }
     }
 
-    void addValuation(Valuation<?> valuation, Consumer<Scene> sceneConsumer) {
+    Scene withValuation(Valuation<?> valuation) {
         // create new scene if the valuation already exists
         if (this.valuations.containsKey(valuation.getAspect())) {
-            var newValuations = new Reference2ObjectLinkedOpenHashMap<>(this.valuations);
+            var newValuations = new Reference2ObjectOpenHashMap<>(this.valuations);
             newValuations.put(valuation.getAspect(), valuation);
-            sceneConsumer.accept(new Scene(newValuations));
+            return new Scene(this.context, newValuations);
         } else {
             this.valuations.put(valuation.getAspect(), valuation);
-            sceneConsumer.accept(this);
+            return this;
         }
     }
 
     public void generateReportRow(StringBuilder sb) {
-        for (var valuation : this.valuations.values()) {
-            if (valuation.getAspect().showOnReport()) {
+        boolean hasPrevious = false;
+        for (var aspect : this.context.getAspects()) {
+            if (aspect.showOnReport()) {
+                if (hasPrevious) {
+                    sb.append(",");
+                }
+                var valuation = this.valuations.get(aspect);
+                if (valuation == null) {
+                    throw new IllegalStateException("No valuation for reportable aspect " + aspect.getName() + " in scene");
+                }
                 valuation.addToReport(sb);
-                sb.append(",");
+                hasPrevious = true;
             }
         }
-        sb.append("\n");
     }
 }

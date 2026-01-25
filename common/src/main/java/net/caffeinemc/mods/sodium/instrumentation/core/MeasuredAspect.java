@@ -1,7 +1,9 @@
 package net.caffeinemc.mods.sodium.instrumentation.core;
 
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
+
+import java.util.List;
+import java.util.function.Supplier;
 
 public abstract class MeasuredAspect<V> extends Aspect {
     protected MeasuredAspect(Context context, String name) {
@@ -9,8 +11,13 @@ public abstract class MeasuredAspect<V> extends Aspect {
     }
 
     @Override
-    void generateValuations(Scene scene, BiConsumer<Scene, Consumer<Scene>> sceneConsumer, Consumer<Scene> sceneWriter) {
-        scene.addValuation(this.createValuation(), localScene -> sceneConsumer.accept(localScene, sceneWriter));
+    List<Scene> generateValuations(Supplier<List<Scene>> sceneSupplier) {
+        var scenes = sceneSupplier.get();
+        var outputScenes = new ReferenceArrayList<Scene>(scenes.size());
+        for (Scene scene : scenes) {
+            outputScenes.add(scene.withValuation(this.createValuation()));
+        }
+        return outputScenes;
     }
 
     protected abstract class MeasurementValuation implements Valuation<V> {

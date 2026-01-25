@@ -2,15 +2,13 @@ package net.caffeinemc.mods.sodium.instrumentation.core;
 
 import it.unimi.dsi.fastutil.objects.ReferenceArrayList;
 
-import java.util.Collection;
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class Context {
     private final String name;
-    private final Collection<Aspect> aspects = new ReferenceArrayList<>();
+    private final List<Aspect> aspects = new ReferenceArrayList<>();
     private final List<Scene> scenes = new ReferenceArrayList<>();
     private int skippedScenes = 0;
     private int currentSceneIndex = 0;
@@ -29,22 +27,15 @@ public class Context {
 
     public void generateScenes() {
         this.contextStart = System.nanoTime();
-
-        Scene initialScene = new Scene();
-        this.generateScenes(initialScene, 0, this.scenes::add);
+        this.scenes.addAll(this.generateScenes(0));
     }
 
-    private void generateScenes(Scene scene, int aspectIndex, Consumer<Scene> sceneWriter) {
+    private List<Scene> generateScenes(int aspectIndex) {
         if (aspectIndex >= this.aspects.size()) {
-            sceneWriter.accept(scene);
-            return;
+            return List.of(new Scene(this));
         }
 
-        Aspect aspect = ((List<Aspect>) this.aspects).get(aspectIndex);
-        aspect.generateValuations(scene, (newScene, sceneWriterLocal) ->
-                        this.generateScenes(newScene, aspectIndex + 1, sceneWriterLocal),
-                sceneWriter
-        );
+        return this.aspects.get(aspectIndex).generateValuations(() -> this.generateScenes(aspectIndex + 1));
     }
 
     public boolean prepareScene(Function<Supplier<Boolean>, Boolean> measurementWrapper) {
@@ -125,19 +116,36 @@ public class Context {
         return sb.toString();
     }
 
-    private void generateReportCSV(StringBuilder sb) {
-        // column headers
-        for (var aspect : this.aspects) {
-            sb.append(aspect.getName()).append(",");
+    public static void joinIterable(StringBuilder sb, Iterable<?> items, String delimiter) {
+        for (var it = items.iterator(); it.hasNext(); ) {
+            sb.append(it.next());
+            if (it.hasNext()) {
+                sb.append(delimiter);
+            }
         }
+    }
+
+    private void generateReportCSV(StringBuilder sb) {
+        for (var it = this.aspects.iterator(); it.hasNext(); ) {
+            sb.append(it.next().getName());
+            if (it.hasNext()) {
+                sb.append(",");
+            }
+        }
+        sb.append("\n");
 
         // data rows
         for (var scene : this.scenes) {
             scene.generateReportRow(sb);
+            sb.append("\n");
         }
     }
 
     public String getName() {
         return this.name;
+    }
+
+    public List<Aspect> getAspects() {
+        return this.aspects;
     }
 }

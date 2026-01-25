@@ -27,7 +27,7 @@ public class AsyncCullingMeasurement {
     );
     public static final ValueListingResult<Long> CULL_TIME = new ValueListingResult<>(
             CONTEXT,
-            "mean cull time (ns)",
+            "culling time (ns)",
             CullTask.timings,
             10
     );
@@ -64,7 +64,6 @@ public class AsyncCullingMeasurement {
             CONTEXT,
             "render distance",
             List.of(32, 20, 12)
-//            List.of(32)
     );
 
     public record CameraState(double x, double y, double z, float yaw, float pitch) {
@@ -72,7 +71,7 @@ public class AsyncCullingMeasurement {
 
     public static final IteratingParameter<CameraState> CAMERA_STATE = new EnumerationParameter<>(
             CONTEXT,
-            "camera position",
+            "camera state",
             TestWorld.CAMERA_STATES.stream()
                     .map(
                             AsyncCullingMeasurement::parseCameraState
