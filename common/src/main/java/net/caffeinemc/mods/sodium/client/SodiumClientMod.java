@@ -27,6 +27,9 @@ public class SodiumClientMod {
         if (System.getProperty("fabric.client.gametest") == null) {
             throw new IllegalStateException("This is a client gametest build, you need to add '-Dfabric.client.gametest=true' to the JVM arguments to run it.");
         }
+        if (!System.getProperty("-Dfabric.client.gametest.disableNetworkSynchronizer").equals("true")) {
+            throw new IllegalStateException("This is a client gametest build, you need to add '-Dfabric.client.gametest.disableNetworkSynchronizer=true' to the JVM arguments to run it.");
+        }
 
         var entries = DebugScreenEntriesAccessor.getEntries();
         entries.put(SODIUM_DEBUG_ENTRY_FULL, new SodiumDebugEntry(true));
