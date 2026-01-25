@@ -161,7 +161,6 @@ public class InstrumentedMeasurementRunner implements FabricClientGameTest {
 
                 return checkChunksLoaded(client);
             }, WORLD_LOAD_TIMEOUT);
-//            this.singleplayer.getClientWorld().waitForChunksRender(WORLD_LOAD_TIMEOUT);
 
             context.runOnClient(client ->
                     measurement.startSceneMeasurement()
