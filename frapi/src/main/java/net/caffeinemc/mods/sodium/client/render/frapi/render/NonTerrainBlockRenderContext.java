@@ -16,45 +16,33 @@
 
 package net.caffeinemc.mods.sodium.client.render.frapi.render;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.caffeinemc.mods.sodium.api.texture.SpriteUtil;
 import net.caffeinemc.mods.sodium.api.util.ColorARGB;
 import net.caffeinemc.mods.sodium.api.util.ColorMixer;
-import net.caffeinemc.mods.sodium.api.vertex.attributes.common.ColorAttribute;
-import net.caffeinemc.mods.sodium.client.model.color.ColorProvider;
-import net.caffeinemc.mods.sodium.client.model.color.ColorProviderRegistry;
 import net.caffeinemc.mods.sodium.client.model.light.LightMode;
 import net.caffeinemc.mods.sodium.client.model.light.LightPipelineProvider;
 import net.caffeinemc.mods.sodium.client.model.light.data.SingleBlockLightDataCache;
-import net.caffeinemc.mods.sodium.client.render.frapi.wrapper.ExtendedMutableQuadViewImpl;
 import net.caffeinemc.mods.sodium.client.render.frapi.wrapper.MutableQuadViewWrapper;
-import net.caffeinemc.mods.sodium.client.render.model.MutableQuadViewImpl;
 import net.caffeinemc.mods.sodium.client.render.model.AbstractBlockRenderContext;
-import net.caffeinemc.mods.sodium.client.render.model.QuadEncoder;
+import net.caffeinemc.mods.sodium.client.render.model.MutableQuadViewImpl;
 import net.caffeinemc.mods.sodium.client.render.model.SodiumShadeMode;
 import net.caffeinemc.mods.sodium.client.render.texture.SpriteFinderCache;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.MutableQuadView;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadTransform;
-import net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.render.AltModelBlockRenderer;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.color.block.BlockTintSource;
+import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
-import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.TriState;
-import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.SingleThreadedRandomSource;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix3f;
-import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.jspecify.annotations.Nullable;
 
@@ -65,12 +53,7 @@ public class NonTerrainBlockRenderContext extends AbstractBlockRenderContext imp
     private BlockColors colorMap;
     private final SingleBlockLightDataCache lightDataCache = new SingleBlockLightDataCache();
 
-    private QuadEmitter output;
-    private boolean defaultAo;
     private Vector3f offset = new Vector3f ();
-    private int[] vertexColors = new int[4];
-    private final BlockPos.MutableBlockPos scratchPos = new BlockPos.MutableBlockPos();
-    private ColorProvider<BlockState> colorProvider;
     private int tintCacheIndex = -1;
     private int tintCacheValue;
     private boolean tintSourcesInitialized;
@@ -146,10 +129,10 @@ public class NonTerrainBlockRenderContext extends AbstractBlockRenderContext imp
         this.state = blockState;
         this.pos = pos;
 
-        this.output = output;
         Vec3 offset = blockState.getOffset(pos);
         this.offset.set(x + offset.x, y + offset.y, z + offset.z);
-        defaultAo = allowAO && blockState.getLightEmission() == 0;
+        this.useAmbientOcclusion = allowAO;
+        this.defaultLightMode = (allowAO && blockState.getLightEmission() == 0) ? LightMode.SMOOTH : LightMode.FLAT;
 
         this.lightDataCache.reset(pos, level);
         this.prepareCulling(enableCulling);
@@ -175,7 +158,7 @@ public class NonTerrainBlockRenderContext extends AbstractBlockRenderContext imp
         if (aoMode == TriState.DEFAULT) {
             lightMode = this.defaultLightMode;
         } else {
-            lightMode = this.useAmbientOcclusion && aoMode != TriState.FALSE && defaultAo ? LightMode.SMOOTH : LightMode.FLAT;
+            lightMode = this.useAmbientOcclusion && aoMode != TriState.FALSE ? LightMode.SMOOTH : LightMode.FLAT;
         }
         final boolean emissive = quad.emissive();
 
