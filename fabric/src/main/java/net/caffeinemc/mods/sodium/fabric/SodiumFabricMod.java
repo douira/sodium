@@ -8,6 +8,7 @@ import net.caffeinemc.mods.sodium.fabric.config.ConfigLoaderFabric;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+
 import java.util.function.Consumer;
 
 public class SodiumFabricMod implements ClientModInitializer {
@@ -28,5 +29,7 @@ public class SodiumFabricMod implements ClientModInitializer {
                 .forEach(api -> api.accept(FlawlessFrames.getProvider()));
 
         FRAPIProvider.getInstance().register();
+
+        AOTest.init();
     }
 }

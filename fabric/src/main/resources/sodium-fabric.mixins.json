@@ -10,6 +10,7 @@
     "requireAnnotations": true
   },
   "client": [
+    "LevelRendererMixin",
     "core.model.quad.BakedQuadMixin",
     "fabric.LevelSliceMixin",
     "features.render.model.ModelManagerMixin",
