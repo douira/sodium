@@ -55,6 +55,7 @@
     "features.gui.hooks.debug.DebugScreenOverlayInsertMixin",
     "features.gui.hooks.debug.DebugScreenOverlayLogFrameMixin",
     "features.gui.hooks.debug.MinecraftRenderFrameMixin",
+    "features.gui.hooks.debug.DebugScreenOverlayMixin",
     "features.gui.hooks.settings.OptionsScreenMixin",
     "features.render.entity.CubeMixin",
     "features.render.entity.ModelPartMixin",
