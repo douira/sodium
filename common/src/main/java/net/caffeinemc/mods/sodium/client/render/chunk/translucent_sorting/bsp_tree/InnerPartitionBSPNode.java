@@ -1019,7 +1019,7 @@ abstract class InnerPartitionBSPNode extends BSPNode {
         // no need to add the geometry to the workspace's trigger registry
         // since it's being sorted statically and the sort order won't change based on the camera position
 
-        return new LeafMultiBSPNode(BSPSortState.compressIndexesInPlace(indexWriter.indexes, false));
+        return new LeafMultiBSPNode(BSPSortState.compressIndexesInPlace(indexWriter.indexes));
     }
 
     static private BSPNode buildSNRLeafNodeFromQuads(BSPWorkspace workspace, IntArrayList indexes) {

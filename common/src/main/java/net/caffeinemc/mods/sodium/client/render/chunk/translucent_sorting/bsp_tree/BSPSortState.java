@@ -88,11 +88,11 @@ class BSPSortState {
         return size < INDEX_COMPRESSION_MIN_LENGTH || size > 1 << 10;
     }
 
-    static int[] compressIndexesInPlace(int[] indexes, boolean doSort) {
+    static int[] compressIndexesInPlace(int[] indexes) {
         if (isOutOfBounds(indexes.length)) {
             return indexes;
         }
-        return compressIndexes(IntArrayList.wrap(indexes), doSort);
+        return compressIndexes(IntArrayList.wrap(indexes), false);
     }
 
     static int[] compressIndexes(IntArrayList indexes) {
@@ -113,18 +113,19 @@ class BSPSortState {
      * 6x5b, 8x4b, 10x3b, 16x2b, 32x1b
      */
     static int[] compressIndexes(IntArrayList indexes, boolean doSort) {
+        // sort for better compression, this also ensures that deltas are positive but as small as possible.
+        // This sorts regardless of whether there's going to be compression to ensure the output is stable with respect to the input quad order.
+        if (doSort) {
+            indexes.sort(null);
+        }
+
         // bail on short lists
         if (isOutOfBounds(indexes.size())) {
             return indexes.toIntArray();
         }
 
+        // this copy is necessary to avoid returning a bunch of deltas when we bail out somewhere later
         IntArrayList workingList = new IntArrayList(indexes);
-
-        // sort for better compression, this also ensures that deltas are positive but
-        // as small as possible.
-        if (doSort) {
-            workingList.sort(null);
-        }
 
         // replace indexes with deltas
         int last = workingList.getInt(0);
