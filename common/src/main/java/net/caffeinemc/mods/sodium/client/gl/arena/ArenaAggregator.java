@@ -35,7 +35,8 @@ public class ArenaAggregator {
     private static final float COMPACTION_MARGIN = 0.1f;
 
     private static final GlBufferUsage BUFFER_USAGE = GlBufferUsage.STATIC_DRAW;
-    private static final long NO_MAX_CAPACITY = 0;
+    private static final long MAX_DYNAMIC_BUFFER_SIZE = MathUtil.fromMib(512 + 1024);
+    private static final float HUGE_BUFFER_SIZE_FACTOR = 1.1f;
     private static final int DISALLOW_NEW_ALLOCATION = 0;
     private static final int ALLOW_NEW_ALLOCATION = 1;
     private static final int REQUIRE_NEW_ALLOCATION = 2;
@@ -48,41 +49,42 @@ public class ArenaAggregator {
 
     private final DataType index = new DataType("Index", Integer.BYTES) {
         @Override
-        long calculateArenaSize(int newArenaCount, long requiredSize, long maxSize) {
+        long calculateArenaSize(int newArenaCount, long requiredSize) {
             var factorSize = switch (newArenaCount) {
                 case 1 -> MathUtil.fromMib(16);
                 case 2 -> MathUtil.fromMib(32);
                 default -> MathUtil.fromMib(64);
             };
-            var capacitySize = requiredSize * 3;
-            if (maxSize != NO_MAX_CAPACITY) {
-                capacitySize = requiredSize * 2;
-            } else {
-                maxSize = Long.MAX_VALUE;
-            }
-            return Math.min(Math.max(capacitySize, factorSize), maxSize);
+
+            long capacitySize = requiredSize * 3;
+
+            capacitySize = limitLargeBufferSize(requiredSize, capacitySize);
+
+            return Math.max(capacitySize, factorSize);
         }
     };
+
     private final DataType geometry = new DataType("Geometry", ChunkMeshFormats.COMPACT.getVertexFormat().getStride()) {
         @Override
-        long calculateArenaSize(int newArenaCount, long requiredSize, long maxSize) {
+        long calculateArenaSize(int newArenaCount, long requiredSize) {
             var factorSize = switch (newArenaCount) {
                 case 1 -> MathUtil.fromMib(32);
                 case 2 -> MathUtil.fromMib(128);
                 default -> MathUtil.fromMib(256);
             };
-            var capacitySize = requiredSize * 7;
-            if (maxSize != NO_MAX_CAPACITY) {
+
+            long capacitySize;
+            if (requiredSize >= MathUtil.fromMib(256)) {
                 capacitySize = requiredSize * 2;
+            } else if (requiredSize >= MathUtil.fromMib(32) && newArenaCount >= 3) {
+                capacitySize = requiredSize * 4;
             } else {
-                maxSize = Long.MAX_VALUE;
-                if (requiredSize >= MathUtil.fromMib(256)) {
-                    capacitySize = requiredSize * 2;
-                } else if (requiredSize >= MathUtil.fromMib(32) && newArenaCount >= 3) {
-                    capacitySize = requiredSize * 4;
-                }
+                capacitySize = requiredSize * 7;
             }
-            return Math.min(Math.max(capacitySize, factorSize), maxSize);
+
+            capacitySize = limitLargeBufferSize(requiredSize, capacitySize);
+
+            return Math.max(capacitySize, factorSize);
         }
     };
 
@@ -158,7 +160,16 @@ public class ArenaAggregator {
             this.arenas = new ArrayList<>();
         }
 
-        abstract long calculateArenaSize(int newArenaCount, long requiredSize, long maxSize);
+        abstract long calculateArenaSize(int newArenaCount, long requiredSize);
+
+        protected static long limitLargeBufferSize(long requiredSize, long capacitySize) {
+            // if the buffer is very large, limit its size to be just enough to fit the requirement
+            if (capacitySize >= MAX_DYNAMIC_BUFFER_SIZE) {
+                var limitedSize = (long) (requiredSize * HUGE_BUFFER_SIZE_FACTOR);
+                capacitySize = Math.max(limitedSize, MAX_DYNAMIC_BUFFER_SIZE);
+            }
+            return capacitySize;
+        }
 
         SharedGlBufferArena createSharedArena(CommandList commands, long requiredSize) {
             GlMutableBuffer buffer = ArenaAggregator.this.getBufferOfSizeAtLeast(commands, requiredSize);
@@ -166,7 +177,7 @@ public class ArenaAggregator {
             return new SharedGlBufferArena(ArenaAggregator.this, buffer, actualCapacity, this.stride);
         }
 
-        SharedGlBufferArena ensureSharedArena(CommandList commands, long requiredCapacity, int newAllocationMode, long maxCapacity) {
+        SharedGlBufferArena ensureSharedArena(CommandList commands, long requiredCapacity, int newAllocationMode) {
             SharedGlBufferArena bestArena = null;
             if (newAllocationMode != REQUIRE_NEW_ALLOCATION) {
                 long biggestFreeSegmentSize = requiredCapacity;
@@ -180,7 +191,7 @@ public class ArenaAggregator {
             }
 
             if (bestArena == null && newAllocationMode != DISALLOW_NEW_ALLOCATION) {
-                var allocationSize = this.calculateArenaSize(this.arenas.size() + 1, requiredCapacity * this.stride, maxCapacity * this.stride);
+                var allocationSize = this.calculateArenaSize(this.arenas.size() + 1, requiredCapacity * this.stride);
                 if (allocationSize <= 0) {
                     throw new IllegalStateException("Cannot allocate arena of with " + requiredCapacity + " bytes");
                 }
@@ -347,7 +358,7 @@ public class ArenaAggregator {
 
     GlBufferArena getArenaFittingFor(CommandList commands, long requiredCapacity, int stride, boolean allowNewAllocation) {
         // TODO: create arena size based on top k region sizes, and scale up if all regions are big
-        return getDataTypeForStride(stride).ensureSharedArena(commands, requiredCapacity, allowNewAllocation ? ALLOW_NEW_ALLOCATION : DISALLOW_NEW_ALLOCATION, NO_MAX_CAPACITY);
+        return getDataTypeForStride(stride).ensureSharedArena(commands, requiredCapacity, allowNewAllocation ? ALLOW_NEW_ALLOCATION : DISALLOW_NEW_ALLOCATION);
     }
 
     GlBufferArena createDedicatedArena(CommandList commands, long requiredCapacity, int stride) {
