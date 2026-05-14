@@ -492,11 +492,13 @@ public class ArenaAggregator {
 
     public void renderBufferDebug(GuiGraphicsExtractor graphics) {
         int leftPadding = 10;
+        int topPadding = 20;
+        int bottomPadding = 50;
         int verticalPadding = 10;
         int arenaPadding = 4;
         int targetWidth = graphics.guiWidth() / 2;
         int targetHeight = graphics.guiHeight();
-        var totalMapHeight = (targetHeight - verticalPadding - 2 * verticalPadding * this.dataTypes.size());
+        var totalMapHeight = (targetHeight - verticalPadding - topPadding - bottomPadding * this.dataTypes.size());
 
         // count number of maps to adjust heights
         var countOffset = 2;
@@ -505,7 +507,7 @@ public class ArenaAggregator {
             return;
         }
 
-        int y = verticalPadding;
+        int y = topPadding;
         for (var dataType : this.dataTypes) {
             // dataType.name + " Shared Arenas: " + dataType.arenas.size()
             var str = String.format("%s Shared Arenas: %d (Used: %d MiB / Allocated: %d MiB) %s",
