@@ -506,7 +506,7 @@ public class ArenaAggregator {
         int topPadding = 20;
         int bottomPadding = 50;
         int verticalPadding = 10;
-        int arenaPadding = 4;
+        int arenaPadding = 5;
         int targetWidth = graphics.guiWidth() / 2;
         int targetHeight = graphics.guiHeight();
         var totalMapHeight = (targetHeight - verticalPadding - topPadding - bottomPadding * this.dataTypes.size());
@@ -520,14 +520,13 @@ public class ArenaAggregator {
 
         int y = topPadding;
         for (var dataType : this.dataTypes) {
-            // dataType.name + " Shared Arenas: " + dataType.arenas.size()
             var str = String.format("%s Shared Arenas: %d (Used: %d MiB / Allocated: %d MiB) %s",
                     dataType.name,
                     dataType.arenas.size(),
                     MathUtil.toMib(dataType.getDeviceUsedMemory()),
                     MathUtil.toMib(dataType.getDeviceAllocatedMemory()),
                     dataType.pauseDeallocation ? "deallocation paused" : "");
-            graphics.text(Minecraft.getInstance().font, str, leftPadding, y, Colors.FOREGROUND);
+            graphics.text(Minecraft.getInstance().font, str, leftPadding, y, Colors.THEME_LIGHTER);
             y += verticalPadding;
             var x = leftPadding;
             var arenaCount = dataType.arenas.size();
@@ -535,21 +534,29 @@ public class ArenaAggregator {
                 continue;
             }
 
-            int mapWidth = (targetWidth - leftPadding * 2 - arenaPadding * (arenaCount - 1)) / arenaCount;
-            int mapHeight = (totalMapHeight * (arenaCount + countOffset)) / mapCount;
+            // calculate rows and column counts
+            int rows = Math.max(1, (int) Math.floor(Math.sqrt((double) arenaCount / 2)));
+            int cols = (int) Math.ceil(arenaCount / (float) rows);
+
+            int mapWidth = (targetWidth - leftPadding * 2 - arenaPadding * (cols - 1)) / cols;
+            int typeHeight = (totalMapHeight * (arenaCount + countOffset)) / mapCount;
+            int mapHeight = (typeHeight - arenaPadding * (rows - 1)) / rows;
+
             for (var arenaEntry : dataType.arenas) {
                 arenaEntry.renderDebugMap(graphics, x, y, mapWidth, mapHeight);
                 x += mapWidth + arenaPadding;
+                if (x + mapWidth > leftPadding + targetWidth) {
+                    x = leftPadding;
+                    y += mapHeight + arenaPadding;
+                }
             }
-
-            y += mapHeight + verticalPadding;
         }
 
         // show total copies and bytes
         graphics.text(Minecraft.getInstance().font,
                 String.format("Defragmentation copies: %d (%d MiB)",
                         this.totalCopyCount, MathUtil.toMib(this.totalCopyBytes)),
-                leftPadding, 30, Colors.FOREGROUND);
+                leftPadding, 30, Colors.THEME_LIGHTER);
 
         // budget per frame
         if (this.lastDefragBudget != null) {
@@ -557,20 +564,20 @@ public class ArenaAggregator {
                     String.format("Defragmentation budget per frame: %d copies / %d MiB",
                             this.lastDefragBudget.getStartCopyCount(),
                             MathUtil.toMib(this.lastDefragBudget.getStartCopyBytes())),
-                    leftPadding, 40, Colors.FOREGROUND);
+                    leftPadding, 40, Colors.THEME_LIGHTER);
 
             // used budget
             graphics.text(Minecraft.getInstance().font,
                     String.format("Defragmentation used this frame: %d copies / %d MiB",
                             this.lastDefragBudget.getUsedCopyCount(),
                             MathUtil.toMib(this.lastDefragBudget.getUsedCopyBytes())),
-                    leftPadding, 50, Colors.FOREGROUND);
+                    leftPadding, 50, Colors.THEME_LIGHTER);
         }
 
         // allocation stats
         graphics.text(Minecraft.getInstance().font,
                 String.format("Buffer allocations: %d (%d MiB)",
                         this.allocationCount, MathUtil.toMib(this.allocationBytes)),
-                leftPadding, 50, Colors.FOREGROUND);
+                leftPadding, 60, Colors.THEME_LIGHTER);
     }
 }
