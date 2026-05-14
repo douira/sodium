@@ -22,8 +22,8 @@ import java.util.List;
 public class ArenaAggregator {
     // how much bigger than requested a buffer can be to be considered for reuse
     public static final float MAX_BUFFER_REUSE_SIZE_FACTOR = 1.4f;
-    private static final int DEFRAG_COPIES_PER_FRAME_BUDGET = 32;
-    private static final long DEFRAG_BYTES_PER_FRAME_BUDGET = MathUtil.fromMib(32);
+    private static final float DEFRAG_COPIES_PER_FRAME = (float) 32 / MathUtil.fromMib(1024);
+    private static final float DEFRAG_BYTES_PER_FRAME = (float) MathUtil.fromMib(32) / MathUtil.fromMib(1024);
     private static final float MIN_FREE_FRACTION_AFTER_DEALLOC = 0.07f;
     private static final float FREE_FRACTION_AFTER_DEALLOC_ABORT_LIMIT = 0.04f;
     private static final long RATE_MEASURE_INTERVAL_NANOS = 500_000_000L;
@@ -43,6 +43,8 @@ public class ArenaAggregator {
     final StagingBuffer stagingBuffer;
     private final GlMutableBuffer[] freeBuffers = new GlMutableBuffer[8];
     private static int freeBufferCount = 0;
+
+    private DefragBudget lastDefragBudget;
 
     private final DataType index = new DataType("Index", Integer.BYTES) {
         @Override
@@ -132,6 +134,14 @@ public class ArenaAggregator {
 
         public long getUsedCopyBytes() {
             return this.startCopyBytes - this.copyBytes;
+        }
+
+        public int getStartCopyCount() {
+            return this.startCopyCount;
+        }
+
+        public long getStartCopyBytes() {
+            return this.startCopyBytes;
         }
     }
 
@@ -424,8 +434,14 @@ public class ArenaAggregator {
             this.lastRateMeasureTime = currentTime;
         }
 
-        // TODO: adjust based on total memory usage? if we have more memory usage we need to move more of it around
-        var budget = new DefragBudget(DEFRAG_COPIES_PER_FRAME_BUDGET, DEFRAG_BYTES_PER_FRAME_BUDGET);
+        // calculate budget based on total allocated memory, but acting as if there's at least one GiB "allocated" for the budget
+        long budgetAllocatedBytes = 0;
+        for (var dataType : this.dataTypes) {
+            budgetAllocatedBytes += dataType.getDeviceAllocatedMemory();
+        }
+        budgetAllocatedBytes = Math.max(budgetAllocatedBytes, MathUtil.fromMib(1024));
+        var budget = new DefragBudget((int) (DEFRAG_COPIES_PER_FRAME * budgetAllocatedBytes), (long) (DEFRAG_BYTES_PER_FRAME * budgetAllocatedBytes));
+        this.lastDefragBudget = budget;
 
         // perform some amount of defragmentation on update
         var typeOffset = (int) Math.floor(Math.random() * this.dataTypes.size());
@@ -523,11 +539,13 @@ public class ArenaAggregator {
                 leftPadding, 30, Colors.FOREGROUND);
 
         // budget per frame
-        graphics.text(Minecraft.getInstance().font,
-                String.format("Defragmentation budget per frame: %d copies / %d MiB",
-                        DEFRAG_COPIES_PER_FRAME_BUDGET,
-                        MathUtil.toMib(DEFRAG_BYTES_PER_FRAME_BUDGET)),
-                leftPadding, 40, Colors.FOREGROUND);
+        if (this.lastDefragBudget != null) {
+            graphics.text(Minecraft.getInstance().font,
+                    String.format("Defragmentation budget per frame: %d copies / %d MiB",
+                            this.lastDefragBudget.getStartCopyCount(),
+                            MathUtil.toMib(this.lastDefragBudget.getStartCopyBytes())),
+                    leftPadding, 40, Colors.FOREGROUND);
+        }
 
         // allocation stats
         graphics.text(Minecraft.getInstance().font,
