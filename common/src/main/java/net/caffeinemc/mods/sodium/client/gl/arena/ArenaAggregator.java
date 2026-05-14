@@ -547,6 +547,13 @@ public class ArenaAggregator {
                             this.lastDefragBudget.getStartCopyCount(),
                             MathUtil.toMib(this.lastDefragBudget.getStartCopyBytes())),
                     leftPadding, 40, Colors.FOREGROUND);
+
+            // used budget
+            graphics.text(Minecraft.getInstance().font,
+                    String.format("Defragmentation used this frame: %d copies / %d MiB",
+                            this.lastDefragBudget.getUsedCopyCount(),
+                            MathUtil.toMib(this.lastDefragBudget.getUsedCopyBytes())),
+                    leftPadding, 50, Colors.FOREGROUND);
         }
 
         // allocation stats
