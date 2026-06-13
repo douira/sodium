@@ -16,19 +16,21 @@
 
 package net.caffeinemc.mods.sodium.client.render.frapi;
 
-import com.mojang.blaze3d.vertex.PoseStack;
+import net.caffeinemc.mods.sodium.api.texture.SpriteUtil;
 import net.caffeinemc.mods.sodium.client.render.frapi.mesh.MutableMeshImpl;
 import net.caffeinemc.mods.sodium.client.render.frapi.render.NonTerrainBlockRenderContext;
 import net.caffeinemc.mods.sodium.client.render.frapi.wrapper.ExtendedMutableQuadViewImpl;
 import net.caffeinemc.mods.sodium.client.render.frapi.wrapper.MutableQuadViewWrapper;
 import net.caffeinemc.mods.sodium.client.render.model.EncodingFormat;
 import net.caffeinemc.mods.sodium.client.render.model.MutableQuadViewImpl;
+import net.caffeinemc.mods.sodium.client.render.texture.SpriteFinderCache;
 import net.fabricmc.fabric.api.client.renderer.v1.Renderer;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.MutableMesh;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.MutableQuadView;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.client.renderer.v1.render.AltModelBlockRenderer;
 import net.minecraft.client.color.block.BlockColors;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 
 import java.util.function.Consumer;
 
@@ -53,6 +55,11 @@ public class SodiumRenderer implements Renderer {
 
             @Override
             public void emitDirectly() {
+                TextureAtlasSprite sprite = this.sprite(SpriteFinderCache.forBlockAtlas());
+                if (sprite != null) {
+                    SpriteUtil.INSTANCE.markSpriteActive(sprite);
+                }
+
                 consumer.accept(wrapper);
             }
         };
