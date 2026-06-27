@@ -20,7 +20,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Stream;
 
-public abstract class GlBufferArena implements AllocatorBase {
+public abstract class BufferArena implements AllocatorBase {
     public static boolean CHECK_ASSERTIONS = false;
     public static boolean CHECK_SEGMENT_ASSERTIONS = true;
 
@@ -35,7 +35,7 @@ public abstract class GlBufferArena implements AllocatorBase {
     final StagingBuffer stagingBuffer;
     GlMutableBuffer arenaBuffer;
 
-    GlBufferSegment head;
+    BufferSegment head;
 
     long capacity;
     long used;
@@ -43,28 +43,28 @@ public abstract class GlBufferArena implements AllocatorBase {
 
     final int stride;
 
-    protected GlBufferArena(ArenaAggregator parent, GlMutableBuffer initialBuffer, long capacity, int stride) {
+    protected BufferArena(ArenaAggregator parent, GlMutableBuffer initialBuffer, long capacity, int stride) {
         this.parent = parent;
         this.stagingBuffer = parent.stagingBuffer;
         this.arenaBuffer = initialBuffer;
         this.capacity = capacity;
         this.stride = stride;
 
-        this.head = GlBufferSegment.createFreeSegment(this, 0, capacity);
+        this.head = BufferSegment.createFreeSegment(this, 0, capacity);
     }
 
     protected abstract void handleResizeUploads(CommandList commandList, RegionAllocatorHandle owner, List<PendingUpload> queue, long totalUploadBytes);
 
-    protected abstract int receiveSegmentsFrom(CommandList commandList, List<GlBufferSegment> segments, GlMutableBuffer srcBufferObj, RegionAllocatorHandle owner);
+    protected abstract int receiveSegmentsFrom(CommandList commandList, List<BufferSegment> segments, GlMutableBuffer srcBufferObj, RegionAllocatorHandle owner);
 
-    List<PendingBufferCopyCommand> buildTransferList(List<GlBufferSegment> usedSegments, long base) {
+    List<PendingBufferCopyCommand> buildTransferList(List<BufferSegment> usedSegments, long base) {
         List<PendingBufferCopyCommand> pendingCopies = new ArrayList<>();
         PendingBufferCopyCommand currentCopyCommand = null;
 
         long writeOffset = base;
 
         for (int i = 0; i < usedSegments.size(); i++) {
-            GlBufferSegment segment = usedSegments.get(i);
+            BufferSegment segment = usedSegments.get(i);
 
             if (currentCopyCommand == null || currentCopyCommand.getReadOffset() + currentCopyCommand.getLength() != segment.getOffset()) {
                 if (currentCopyCommand != null) {
@@ -124,16 +124,16 @@ public abstract class GlBufferArena implements AllocatorBase {
     public void registerOwner(RegionAllocatorHandle regionAllocatorHandle) {
     }
 
-    GlBufferSegment alloc(long size, RegionAllocatorHandle owner, int ownerIndex) {
+    BufferSegment alloc(long size, RegionAllocatorHandle owner, int ownerIndex) {
         this.checkAssertions();
 
-        GlBufferSegment free = this.takeFree(size);
+        BufferSegment free = this.takeFree(size);
 
         if (free == null) {
             return null;
         }
 
-        GlBufferSegment result;
+        BufferSegment result;
 
         // exact fit
         if (free.getLength() == size) {
@@ -143,7 +143,7 @@ public abstract class GlBufferArena implements AllocatorBase {
         }
         // free space is larger than requested, return new segment at end of free space
         else {
-            result = new GlBufferSegment(this, owner, ownerIndex, free.getEnd() - size, size);
+            result = new BufferSegment(this, owner, ownerIndex, free.getEnd() - size, size);
             result.setNext(free.getNext());
             result.setPrev(free);
 
@@ -161,9 +161,9 @@ public abstract class GlBufferArena implements AllocatorBase {
         return result;
     }
 
-    GlBufferSegment takeFree(long size) {
-        GlBufferSegment entry = this.head;
-        GlBufferSegment best = null;
+    BufferSegment takeFree(long size) {
+        BufferSegment entry = this.head;
+        BufferSegment best = null;
 
         while (entry != null) {
             if (entry.isFree()) {
@@ -183,7 +183,7 @@ public abstract class GlBufferArena implements AllocatorBase {
     }
 
     @Override
-    public void free(GlBufferSegment entry) {
+    public void free(BufferSegment entry) {
         if (entry.isFree()) {
             throw new IllegalStateException("Already freed");
         }
@@ -193,13 +193,13 @@ public abstract class GlBufferArena implements AllocatorBase {
 
         this.updateUsed(-entry.getLength(), owner);
 
-        GlBufferSegment next = entry.getNext();
+        BufferSegment next = entry.getNext();
 
         if (next != null && next.isFree()) {
             entry.mergeInto(next);
         }
 
-        GlBufferSegment prev = entry.getPrev();
+        BufferSegment prev = entry.getPrev();
 
         if (prev != null && prev.isFree()) {
             prev.mergeInto(entry);
@@ -324,7 +324,7 @@ public abstract class GlBufferArena implements AllocatorBase {
 
         int elementCount = data.remaining() / this.stride;
 
-        GlBufferSegment dst = this.alloc(elementCount, owner, upload.getSegmentOwnerIndex());
+        BufferSegment dst = this.alloc(elementCount, owner, upload.getSegmentOwnerIndex());
 
         if (dst == null) {
             return false;
@@ -338,7 +338,7 @@ public abstract class GlBufferArena implements AllocatorBase {
         return true;
     }
 
-    void checkSegmentAssertions(GlBufferSegment seg) {
+    void checkSegmentAssertions(BufferSegment seg) {
         if (CHECK_SEGMENT_ASSERTIONS || CHECK_ASSERTIONS) {
             if (seg.getOffset() < 0) {
                 throw new IllegalStateException("segment.start < 0: out of bounds");
@@ -346,7 +346,7 @@ public abstract class GlBufferArena implements AllocatorBase {
                 throw new IllegalStateException("segment.end > arena.capacity: out of bounds");
             }
 
-            GlBufferSegment next = seg.getNext();
+            BufferSegment next = seg.getNext();
 
             if (next != null) {
                 if (next.getOffset() < seg.getEnd()) {
@@ -374,7 +374,7 @@ public abstract class GlBufferArena implements AllocatorBase {
                 }
             }
 
-            GlBufferSegment prev = seg.getPrev();
+            BufferSegment prev = seg.getPrev();
 
             if (prev != null) {
                 if (prev.getEnd() > seg.getOffset()) {
@@ -403,7 +403,7 @@ public abstract class GlBufferArena implements AllocatorBase {
     }
 
     private void checkAssertions0() {
-        GlBufferSegment seg = this.head;
+        BufferSegment seg = this.head;
         long used = 0;
 
         while (seg != null) {

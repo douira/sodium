@@ -6,16 +6,16 @@ import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SharedGlBufferArena extends DefragmentingGlBufferArena implements SizedTreeMap.Sized {
+public class SharedBufferArena extends DefragmentingBufferArena implements SizedTreeMap.Sized {
     private static final int TRANSFER_ABORTED = -1;
     final SizedTreeMap<RegionAllocatorHandle> ownersByUsed = new SizedTreeMap<>();
     private boolean isEmptying = false;
-    private SharedGlBufferArena compactionPair = null;
+    private SharedBufferArena compactionPair = null;
 
     private final int identifier;
     private static int nextIdentifier = 1;
 
-    protected SharedGlBufferArena(ArenaAggregator allocator, GlMutableBuffer initialBuffer, long capacity, int stride) {
+    protected SharedBufferArena(ArenaAggregator allocator, GlMutableBuffer initialBuffer, long capacity, int stride) {
         super(allocator, initialBuffer, capacity, stride);
         this.identifier = nextIdentifier++;
     }
@@ -81,7 +81,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         return this.compactionPair == null;
     }
 
-    public void makeCompactionSource(SharedGlBufferArena targetArena) {
+    public void makeCompactionSource(SharedBufferArena targetArena) {
         if (this.compactionPair != null || targetArena.compactionPair != null) {
             throw new IllegalStateException("One of the arenas is already part of a compaction pair");
         }
@@ -165,7 +165,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
 
     private int estimateAndTransferUploadingOwner(CommandList commands, int finalSegmentCount, RegionAllocatorHandle biggestUsageOwner, long finalUsage, boolean allowNewAllocation) {
         // TODO: when estimating new capacity, take into account how full the section already is since a full section will not grow much anymore
-        var newCapacity = GlBufferArena.estimateNewCapacity(finalSegmentCount, biggestUsageOwner.getFillFractionInv(), finalUsage);
+        var newCapacity = BufferArena.estimateNewCapacity(finalSegmentCount, biggestUsageOwner.getFillFractionInv(), finalUsage);
         return this.evictOwner(commands, biggestUsageOwner, newCapacity, allowNewAllocation);
     }
 
@@ -219,7 +219,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         return transferOwnerTo(commands, owner, targetArena);
     }
 
-    private int transferOwnerTo(CommandList commands, RegionAllocatorHandle owner, GlBufferArena targetArena) {
+    private int transferOwnerTo(CommandList commands, RegionAllocatorHandle owner, BufferArena targetArena) {
         if (targetArena == this) {
             throw new IllegalStateException("Target arena is the same as the source arena");
         }
@@ -241,7 +241,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
     }
 
     @Override
-    protected int receiveSegmentsFrom(CommandList commandList, List<GlBufferSegment> segments, GlMutableBuffer srcBufferObj, RegionAllocatorHandle owner) {
+    protected int receiveSegmentsFrom(CommandList commandList, List<BufferSegment> segments, GlMutableBuffer srcBufferObj, RegionAllocatorHandle owner) {
         this.used += owner.used;
         this.usedSegments += segments.size();
         if (this.used > this.capacity) {
@@ -269,17 +269,17 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         return pendingCopies.size();
     }
 
-    private void finalizeInsertedSegments(GlBufferSegment targetSegment, long endOfFreePrefix, List<GlBufferSegment> segments) {
+    private void finalizeInsertedSegments(BufferSegment targetSegment, long endOfFreePrefix, List<BufferSegment> segments) {
         if (segments.isEmpty()) {
             return;
         }
 
         // new order: targetSegment.prev -> targetSegment (if any space left) -> segments... -> targetSegment.next
         // the target has not yet been resized at this point
-        GlBufferSegment targetPrev = targetSegment.getPrev();
-        GlBufferSegment targetNext = targetSegment.getNext();
-        GlBufferSegment firstInserted = segments.getFirst();
-        GlBufferSegment lastInserted = segments.getLast();
+        BufferSegment targetPrev = targetSegment.getPrev();
+        BufferSegment targetNext = targetSegment.getNext();
+        BufferSegment firstInserted = segments.getFirst();
+        BufferSegment lastInserted = segments.getLast();
 
         // link lastInserted and targetNext
         lastInserted.setNext(targetNext);
@@ -313,15 +313,15 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         this.checkAssertions();
     }
 
-    private List<GlBufferSegment> extractAllSegmentsOwnedBy(RegionAllocatorHandle owner, AllocatorBase newAllocator) {
-        ArrayList<GlBufferSegment> extractedSegments = new ArrayList<>();
-        GlBufferSegment previousExtracted = null;
-        GlBufferSegment current = this.head;
+    private List<BufferSegment> extractAllSegmentsOwnedBy(RegionAllocatorHandle owner, AllocatorBase newAllocator) {
+        ArrayList<BufferSegment> extractedSegments = new ArrayList<>();
+        BufferSegment previousExtracted = null;
+        BufferSegment current = this.head;
         this.checkAssertions();
 
         // extract segments owned by the specified owner, patching links of the segments that are not extracted, and correcting the links on the extracted segments to point to each other
         while (current != null) {
-            GlBufferSegment next = current.getNext();
+            BufferSegment next = current.getNext();
 
             if (current.getOwner() == owner) {
                 // patch links, offsets, and lengths of surrounding segments
@@ -352,15 +352,15 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
         return extractedSegments;
     }
 
-    private void extractSegment(GlBufferSegment current, GlBufferSegment next) {
-        GlBufferSegment prev = current.getPrev();
+    private void extractSegment(BufferSegment current, BufferSegment next) {
+        BufferSegment prev = current.getPrev();
 
         // current is head
         if (current == this.head) {
             // next is null
             if (next == null) {
                 // new free head
-                this.head = GlBufferSegment.createFreeSegment(this, 0, current.getLength());
+                this.head = BufferSegment.createFreeSegment(this, 0, current.getLength());
                 this.addFreeSegment(this.head);
             }
             // next is free, expand it
@@ -374,7 +374,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
             }
             // next is not free, create new free segment as head
             else {
-                this.head = GlBufferSegment.createFreeSegment(this, 0, current.getLength());
+                this.head = BufferSegment.createFreeSegment(this, 0, current.getLength());
                 this.head.setNext(next);
                 next.setPrev(this.head);
                 this.addFreeSegment(this.head);
@@ -393,7 +393,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
             }
             // prev is not free, create new free segment as tail
             else {
-                GlBufferSegment newFreeTail = GlBufferSegment.createFreeSegment(this, current.getOffset(), current.getLength());
+                BufferSegment newFreeTail = BufferSegment.createFreeSegment(this, current.getOffset(), current.getLength());
                 prev.setNext(newFreeTail);
                 newFreeTail.setPrev(prev);
                 this.addFreeSegment(newFreeTail);
@@ -431,7 +431,7 @@ public class SharedGlBufferArena extends DefragmentingGlBufferArena implements S
             }
             // neither is free, create new free segment between them
             else {
-                GlBufferSegment newFreeSegment = GlBufferSegment.createFreeSegment(this, current.getOffset(), current.getLength());
+                BufferSegment newFreeSegment = BufferSegment.createFreeSegment(this, current.getOffset(), current.getLength());
                 prev.setNext(newFreeSegment);
                 newFreeSegment.setPrev(prev);
                 newFreeSegment.setNext(next);
