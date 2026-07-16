@@ -43,7 +43,7 @@ public class ArenaAggregator {
 
     final StagingBuffer stagingBuffer;
     private final GlMutableBuffer[] freeBuffers = new GlMutableBuffer[8];
-    private static int freeBufferCount = 0;
+    private int freeBufferCount = 0;
 
     private DefragBudget lastDefragBudget;
 
@@ -370,7 +370,7 @@ public class ArenaAggregator {
     GlMutableBuffer getBufferOfSizeAtLeast(CommandList commands, long bytes) {
         GlMutableBuffer buffer = null;
 
-        if (freeBufferCount > 0) {
+        if (this.freeBufferCount > 0) {
             // get any buffer of at least the requested size but at most MAX_BUFFER_REUSE_SIZE_FACTOR larger
             long maxAcceptableSize = (long) (bytes * MAX_BUFFER_REUSE_SIZE_FACTOR);
 
@@ -389,7 +389,7 @@ public class ArenaAggregator {
             }
             if (buffer != null) {
                 this.freeBuffers[candidateIndex] = null;
-                freeBufferCount--;
+                this.freeBufferCount--;
             }
         }
 
@@ -404,11 +404,11 @@ public class ArenaAggregator {
 
     void releaseBufferForReuse(CommandList commands, GlMutableBuffer buffer) {
         // find an empty slot if there is one
-        if (freeBufferCount < this.freeBuffers.length) {
+        if (this.freeBufferCount < this.freeBuffers.length) {
             for (int i = 0; i < this.freeBuffers.length; i++) {
                 if (this.freeBuffers[i] == null) {
                     this.freeBuffers[i] = buffer;
-                    freeBufferCount++;
+                    this.freeBufferCount++;
                     return;
                 }
             }
@@ -428,7 +428,7 @@ public class ArenaAggregator {
                 this.freeBuffers[i] = null;
             }
         }
-        freeBufferCount = 0;
+        this.freeBufferCount = 0;
 
         for (var dataType : this.dataTypes) {
             for (var arenaEntry : dataType.arenas) {
@@ -494,7 +494,7 @@ public class ArenaAggregator {
     }
 
     public int getBufferCount() {
-        int count = freeBufferCount;
+        int count = this.freeBufferCount;
         for (var dataType : this.dataTypes) {
             count += dataType.arenas.size();
         }
