@@ -7,7 +7,7 @@
 
 layout(location = 0) in vec4 v_Color; // The interpolated vertex color
 layout(location = 1) in vec2 v_TexCoord; // The interpolated block texture coordinates
-layout(location = 2) in float fadeFactor;
+layout(location = 2) in float v_fadeFactor;
 
 uniform sampler2D u_BlockTex; // The block texture
 
@@ -26,7 +26,7 @@ vec4 calculateFinalColor(vec4 color) {
     #ifdef OIT_ALPHA_ONLY
     float factor = 1.0;
     #else
-    float factor = fadeFactor;
+    float factor = v_fadeFactor;
     #endif
 
     // Window -> NDC
