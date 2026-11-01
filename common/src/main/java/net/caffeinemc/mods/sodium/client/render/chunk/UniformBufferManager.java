@@ -1,9 +1,9 @@
 package net.caffeinemc.mods.sodium.client.render.chunk;
 
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
 import net.caffeinemc.mods.sodium.client.gpu.GPULimits;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
@@ -16,9 +16,9 @@ import net.minecraft.client.TextureFilteringMethod;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.DynamicGpuDataStorage;
 import net.minecraft.client.renderer.DynamicGpuDataStorageMapped;
-import net.minecraft.client.renderer.DynamicGpuDataStorageNonMapped;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import org.joml.Matrix4f;
+import org.joml.Vector2fc;
 import org.jspecify.annotations.NonNull;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -26,7 +26,7 @@ import org.lwjgl.system.MemoryUtil;
 import java.nio.ByteBuffer;
 
 public class UniformBufferManager {
-    private static final int GLOBAL_UNIFORM_SIZE = 256;
+    private static final int GLOBAL_UNIFORM_SIZE = 512;
     private static final int INITIAL_GLOBAL_UNIFORM_CAPACITY = 8;
     private static final int TIME_BUFFER_SIZE_PER_REGION = RenderRegion.REGION_SIZE * Integer.BYTES;
 
@@ -113,7 +113,10 @@ public class UniformBufferManager {
 
         this.uniformData = this.uniformStorage.writeData(new GlobalUniforms(
                 new Matrix4f(matrices.projection()),
+                new Matrix4f(matrices.projectionInverse()),
                 new Matrix4f(matrices.modelView()),
+                new Matrix4f(matrices.modelViewInverse()),
+                matrices.viewportSize(),
                 fogParameters.red(), fogParameters.green(), fogParameters.blue(), fogParameters.alpha(),
                 cameraTransform.fracX, cameraTransform.fracY, cameraTransform.fracZ,
                 fogParameters.environmentalStart(), fogParameters.environmentalEnd(),
@@ -187,7 +190,10 @@ public class UniformBufferManager {
 
     private record GlobalUniforms(
             Matrix4f projection,
+            Matrix4f projectionInverse,
             Matrix4f modelView,
+            Matrix4f modelViewInverse,
+            Vector2fc viewportSize,
             float fogRed,
             float fogGreen,
             float fogBlue,
@@ -210,7 +216,10 @@ public class UniformBufferManager {
         public void write(@NonNull ByteBuffer byteBuffer) {
             Std140Builder.intoBuffer(byteBuffer)
                     .putMat4f(this.projection)
+                    .putMat4f(this.projectionInverse)
                     .putMat4f(this.modelView)
+                    .putMat4f(this.modelViewInverse)
+                    .putVec2(this.viewportSize)
                     .putVec4(this.fogRed, this.fogGreen, this.fogBlue, this.fogAlpha)
                     .putVec3(this.cameraOffsetX, this.cameraOffsetY, this.cameraOffsetZ)
                     .putVec2(this.environmentalFogStart, this.environmentalFogEnd)

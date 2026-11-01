@@ -1,6 +1,10 @@
 layout(std140) uniform u_Globals {
     mat4 u_ProjectionMatrix;
+    mat4 u_ProjectionMatrixInverse;
     mat4 u_ModelViewMatrix;
+    mat4 u_ModelViewMatrixInverse;
+
+    vec2 u_viewportSize;
 
     vec4 u_FogColor;
     vec3 u_CameraOffset;

@@ -2,6 +2,7 @@ package net.caffeinemc.mods.sodium.mixin.core.render.world;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import net.caffeinemc.mods.sodium.client.util.FogParameters;
 import net.caffeinemc.mods.sodium.client.util.FogStorage;
@@ -46,5 +47,14 @@ public class GameRendererMixin implements GameRendererStorage {
     @Override
     public Matrix4fc sodium$getProjectionMatrix() {
         return this.projection;
+    }
+
+    @Shadow
+    @Final
+    private RenderTarget mainRenderTarget;
+
+    @Override
+    public RenderTarget sodium$getMainRenderTarget() {
+        return this.mainRenderTarget;
     }
 }

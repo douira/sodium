@@ -9,8 +9,7 @@ layout(location = 0) out vec4 v_Color;
 layout(location = 1) out vec2 v_TexCoord;
 
 #ifdef USE_FOG
-layout(location = 2) out vec2 v_FragDistance;
-layout(location = 3) out float fadeFactor;
+layout(location = 2) out float fadeFactor;
 #endif
 
 uniform isamplerBuffer u_SectionTimeInfo;
@@ -48,8 +47,6 @@ void main() {
     vec3 position = (_vert_position + translation) - u_CameraOffset;
 
 #ifdef USE_FOG
-    v_FragDistance = getFragDistance(position);
-
     int chunkId = int(_draw_id);
     int chunkFade = texelFetch(u_SectionTimeInfo, int((u_RegionID * 256u) + uint(chunkId))).r;
     int fadeTime = u_CurrentTime - chunkFade;

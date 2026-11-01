@@ -7,8 +7,7 @@
 
 layout(location = 0) in vec4 v_Color; // The interpolated vertex color
 layout(location = 1) in vec2 v_TexCoord; // The interpolated block texture coordinates
-layout(location = 2) in vec2 v_FragDistance; // The fragment's distance from the camera (cylindrical and spherical)
-layout(location = 3) in float fadeFactor;
+layout(location = 2) in float fadeFactor;
 
 uniform sampler2D u_BlockTex; // The block texture
 
@@ -30,7 +29,23 @@ vec4 calculateFinalColor(vec4 color) {
     float factor = fadeFactor;
     #endif
 
-    return _linearFog(color, v_FragDistance, fogColor, u_EnvironmentFog, u_RenderFog, factor);
+    // Window -> NDC
+    vec2 ndcXY = (gl_FragCoord.xy / u_viewportSize) * 2.0 - 1.0;
+    float ndcZ = gl_FragCoord.z * 2.0 - 1.0;
+
+    // NDC -> View space
+    vec4 ndcPosition = vec4(ndcXY, ndcZ, 1.0);
+    vec4 viewPosition = u_ProjectionMatrixInverse * ndcPosition;
+
+    viewPosition /= viewPosition.w;
+
+    // View -> World space
+    vec4 worldPosition = u_ModelViewMatrixInverse * viewPosition;
+
+    // The fragment's distance from the camera (cylindrical and spherical)
+    vec2 fragDistance = getFragDistance(worldPosition.xyz);
+
+    return _linearFog(color, fragDistance, fogColor, u_EnvironmentFog, u_RenderFog, factor);
 }
 vec4 sampleNearest(sampler2D source, vec2 uv, vec2 pixelSize, vec2 du, vec2 dv, vec2 texelScreenSize) {
     // Convert our UV back up to texel coordinates and find out how far over we are from the center of each pixel

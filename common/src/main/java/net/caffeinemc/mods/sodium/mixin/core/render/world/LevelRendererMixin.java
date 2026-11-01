@@ -27,14 +27,15 @@ import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
-import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.resources.model.ModelManager;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Util;
 import net.minecraft.world.level.block.LeavesBlock;
+import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Vector2f;
 import org.joml.Vector4f;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
@@ -135,11 +136,17 @@ public abstract class LevelRendererMixin implements LevelRendererExtension {
     }
 
     @WrapOperation(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/LevelRenderer;prepareChunkRenders(Lorg/joml/Matrix4fc;Z)Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;"))
-    private ChunkSectionsToRender getRenderState(LevelRenderer instance, Matrix4fc modelViewMatrix, boolean b, Operation<ChunkSectionsToRender> original, @Local Vector4f fogColor) {
-        var projectionMatrix = ((GameRendererStorage) Minecraft.getInstance().gameRenderer)
-                .sodium$getProjectionMatrix();
+    private ChunkSectionsToRender getRenderState(LevelRenderer instance, Matrix4fc modelViewMatrix, boolean respectTranslucentOrder, Operation<ChunkSectionsToRender> original, @Local(argsOnly = true) Vector4f fogColor) {
+        GameRendererStorage gameRenderer = (GameRendererStorage) Minecraft.getInstance().gameRenderer;
+        var projectionMatrix = gameRenderer.sodium$getProjectionMatrix();
 
-        this.matrices = new ChunkRenderMatrices(projectionMatrix, modelViewMatrix);
+        var projectionInverseMatrix = new Matrix4f(projectionMatrix).invertPerspective();
+        var modelViewInverseMatrix = new Matrix4f(modelViewMatrix).invertAffine();
+
+        var mainRenderTarget = gameRenderer.sodium$getMainRenderTarget();
+        var viewportSize = new Vector2f((float) mainRenderTarget.width, (float) mainRenderTarget.height);
+
+        this.matrices = new ChunkRenderMatrices(projectionMatrix, projectionInverseMatrix, modelViewMatrix, modelViewInverseMatrix, viewportSize);
         var pos = this.levelRenderState.cameraRenderState.pos;
 
         // update the fog color here with the actual fog color being used to render the sky, since the fog color that
@@ -147,7 +154,7 @@ public abstract class LevelRendererMixin implements LevelRendererExtension {
         this.renderer.updateFogColor(fogColor);
 
         this.renderer.prepareChunkRendering(this.matrices, pos.x, pos.y, pos.z);
-        return new SodiumChunkSection(renderer, matrices, pos.x, pos.y, pos.z);
+        return new SodiumChunkSection(this.renderer, this.matrices, pos.x, pos.y, pos.z);
     }
 
     /**
