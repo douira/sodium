@@ -26,7 +26,7 @@ import org.lwjgl.system.MemoryUtil;
 import java.nio.ByteBuffer;
 
 public class UniformBufferManager {
-    private static final int GLOBAL_UNIFORM_SIZE = 512;
+    private static final int GLOBAL_UNIFORM_SIZE = 256;
     private static final int INITIAL_GLOBAL_UNIFORM_CAPACITY = 8;
     private static final int TIME_BUFFER_SIZE_PER_REGION = RenderRegion.REGION_SIZE * Integer.BYTES;
 
@@ -112,8 +112,7 @@ public class UniformBufferManager {
                 .getTexture(TextureAtlas.LOCATION_BLOCKS);
 
         this.uniformData = this.uniformStorage.writeData(new GlobalUniforms(
-                new Matrix4f(matrices.projection()),
-                new Matrix4f(matrices.modelView()),
+                new Matrix4f(matrices.projection()).mul(matrices.modelView()),
                 createWindowToWorldMatrix(matrices),
                 fogParameters.red(), fogParameters.green(), fogParameters.blue(), fogParameters.alpha(),
                 cameraTransform.fracX, cameraTransform.fracY, cameraTransform.fracZ,
@@ -197,8 +196,7 @@ public class UniformBufferManager {
     }
 
     private record GlobalUniforms(
-            Matrix4f projection,
-            Matrix4f modelView,
+            Matrix4f modelViewProjection,
             Matrix4f windowToWorld,
             float fogRed,
             float fogGreen,
@@ -221,8 +219,7 @@ public class UniformBufferManager {
         @Override
         public void write(@NonNull ByteBuffer byteBuffer) {
             Std140Builder.intoBuffer(byteBuffer)
-                    .putMat4f(this.projection)
-                    .putMat4f(this.modelView)
+                    .putMat4f(this.modelViewProjection)
                     .putMat4f(this.windowToWorld)
                     .putVec4(this.fogRed, this.fogGreen, this.fogBlue, this.fogAlpha)
                     .putVec3(this.cameraOffsetX, this.cameraOffsetY, this.cameraOffsetZ)
