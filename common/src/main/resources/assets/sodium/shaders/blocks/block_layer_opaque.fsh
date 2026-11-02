@@ -29,21 +29,12 @@ vec4 calculateFinalColor(vec4 color) {
     float factor = v_fadeFactor;
     #endif
 
-    // Window -> NDC
-    vec2 ndcXY = (gl_FragCoord.xy / u_viewportSize) * 2.0 - 1.0;
-    float ndcZ = gl_FragCoord.z * 2.0 - 1.0;
-
-    // NDC -> View space
-    vec4 ndcPosition = vec4(ndcXY, ndcZ, 1.0);
-    vec4 viewPosition = u_ProjectionMatrixInverse * ndcPosition;
-
-    viewPosition /= viewPosition.w;
-
-    // View -> World space
-    vec4 worldPosition = u_ModelViewMatrixInverse * viewPosition;
+    // Calculate the camera-relative world position from the fragment position via the combined inverse matrix
+    vec4 position = (u_WindowToWorldMatrix * vec4(gl_FragCoord.xyz, 1.0));
+    position.xyz /= position.w;
 
     // The fragment's distance from the camera (cylindrical and spherical)
-    vec2 fragDistance = getFragDistance(worldPosition.xyz);
+    vec2 fragDistance = getFragDistance(position.xyz);
 
     return _linearFog(color, fragDistance, fogColor, u_EnvironmentFog, u_RenderFog, factor);
 }

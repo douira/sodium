@@ -113,10 +113,8 @@ public class UniformBufferManager {
 
         this.uniformData = this.uniformStorage.writeData(new GlobalUniforms(
                 new Matrix4f(matrices.projection()),
-                new Matrix4f(matrices.projectionInverse()),
                 new Matrix4f(matrices.modelView()),
-                new Matrix4f(matrices.modelViewInverse()),
-                matrices.viewportSize(),
+                createWindowToWorldMatrix(matrices),
                 fogParameters.red(), fogParameters.green(), fogParameters.blue(), fogParameters.alpha(),
                 cameraTransform.fracX, cameraTransform.fracY, cameraTransform.fracZ,
                 fogParameters.environmentalStart(), fogParameters.environmentalEnd(),
@@ -127,6 +125,16 @@ public class UniformBufferManager {
                 (float) (1.0 / (Minecraft.getInstance().options.chunkSectionFadeInTime().get() * 1000.0)),
                 Minecraft.getInstance().options.textureFiltering().get() == TextureFilteringMethod.RGSS ? 1 : 0
         ));
+    }
+
+    // construct a matrix that maps from window coordinates to camera-relative world space. This is the inverse of the combination of the entire transform chain from world to window space.
+    private static Matrix4f createWindowToWorldMatrix(ChunkRenderMatrices matrices) {
+        Vector2fc viewportSize = matrices.viewportSize();
+
+        return new Matrix4f(matrices.modelView()).invertAffine()
+                .mul(new Matrix4f(matrices.projection()).invertPerspective())
+                .translate(-1.0f, -1.0f, -1.0f)
+                .scale(2.0f / viewportSize.x(), 2.0f / viewportSize.y(), 2.0f);
     }
 
     public GpuBufferSlice getUniformBuffer() {
@@ -190,10 +198,8 @@ public class UniformBufferManager {
 
     private record GlobalUniforms(
             Matrix4f projection,
-            Matrix4f projectionInverse,
             Matrix4f modelView,
-            Matrix4f modelViewInverse,
-            Vector2fc viewportSize,
+            Matrix4f windowToWorld,
             float fogRed,
             float fogGreen,
             float fogBlue,
@@ -216,10 +222,8 @@ public class UniformBufferManager {
         public void write(@NonNull ByteBuffer byteBuffer) {
             Std140Builder.intoBuffer(byteBuffer)
                     .putMat4f(this.projection)
-                    .putMat4f(this.projectionInverse)
                     .putMat4f(this.modelView)
-                    .putMat4f(this.modelViewInverse)
-                    .putVec2(this.viewportSize)
+                    .putMat4f(this.windowToWorld)
                     .putVec4(this.fogRed, this.fogGreen, this.fogBlue, this.fogAlpha)
                     .putVec3(this.cameraOffsetX, this.cameraOffsetY, this.cameraOffsetZ)
                     .putVec2(this.environmentalFogStart, this.environmentalFogEnd)

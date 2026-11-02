@@ -33,7 +33,6 @@ import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Util;
 import net.minecraft.world.level.block.LeavesBlock;
-import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector2f;
 import org.joml.Vector4f;
@@ -140,13 +139,10 @@ public abstract class LevelRendererMixin implements LevelRendererExtension {
         GameRendererStorage gameRenderer = (GameRendererStorage) Minecraft.getInstance().gameRenderer;
         var projectionMatrix = gameRenderer.sodium$getProjectionMatrix();
 
-        var projectionInverseMatrix = new Matrix4f(projectionMatrix).invertPerspective();
-        var modelViewInverseMatrix = new Matrix4f(modelViewMatrix).invertAffine();
-
         var mainRenderTarget = gameRenderer.sodium$getMainRenderTarget();
         var viewportSize = new Vector2f((float) mainRenderTarget.width, (float) mainRenderTarget.height);
 
-        this.matrices = new ChunkRenderMatrices(projectionMatrix, projectionInverseMatrix, modelViewMatrix, modelViewInverseMatrix, viewportSize);
+        this.matrices = new ChunkRenderMatrices(projectionMatrix, modelViewMatrix, viewportSize);
         var pos = this.levelRenderState.cameraRenderState.pos;
 
         // update the fog color here with the actual fog color being used to render the sky, since the fog color that
